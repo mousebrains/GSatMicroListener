@@ -14,6 +14,8 @@ import queue
 import argparse
 import logging
 import logging.handlers
+import sqlite3
+import os.path
 
 def addLoggerArgs(parser:argparse.ArgumentParser) -> None:
     grp = parser.add_argument_group('Logger Related Options')
@@ -53,17 +55,31 @@ class Writer(threading.Thread):
         self.fn = fn
         self.logger = logger
         self.q = queue.Queue()
+
     def run(self) -> None:
         '''Called on thread start '''
+        fn = self.fn
+        if not os.path.isfile(fn): # Create a database
+            try:
+                self.logger.info('Creating database %s', fn)
+                with sqlite3.connect(fn) as conn:
+                    conn.execute('CREATE TABLE data(t REAL PRIMARY KEY, info TEXT);')
+                    conn.commit()
+            except:
+                self.logger.exception('Exception creating %s', fn)
+                return
+
         while True: # Loop forever
             try:
-                item = self.q.get()
+                (t, item) = self.q.get()
                 self.q.task_done()
                 self.logger.info('Item=%s', item)
-                with open(self.fn, 'ab') as fp:
-                    fp.write(item)
+                with sqlite3.connect(fn) as conn:
+                    self.logger.info('t=%s item=%s', t, item)
+                    conn.execute('INSERT OR REPLACE INTO data VALUES(?,?);', (t, item))
+                    conn.commit()
             except:
-                self.logger.exception('Exception while writing to %s', self.fn)
+                self.logger.exception('Exception while writing to %s', fn)
 
 class Parser(threading.Thread):
     ''' Read from a connection, parse it, and send to the output queue '''
@@ -86,18 +102,19 @@ class Parser(threading.Thread):
         try:
             msg = b''
             with self.conn as conn:
+                t0 = time.time()
                 while True: # Get the whole message until the socket is closed
                     data = conn.recv(8192) # Get the data
                     self.logger.debug('data=%s', data)
                     if not data: break # connection has dropped
                     msg += data
-            self.q.put(self.__parser(msg))
+            self.q.put((t0, self.__parser(msg)))
         except:
             self.logger.exception('Exception while reading from address %s', self.addr)
 
 parser = argparse.ArgumentParser(description="Listen for a GSatMicro message")
 addLoggerArgs(parser)
-parser.add_argument('--output', type=str, required=True, help='File to write to')
+parser.add_argument('--output', type=str, required=True, help='SQLite3 database to use')
 grp = parser.add_argument_group('Listener Related Options')
 grp.add_argument('--port', type=int, required=True, help='Port to listen on')
 grp.add_argument('--maxConnections', type=int, default=10, 
