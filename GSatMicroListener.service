@@ -1,0 +1,30 @@
+#
+# Listen on a port for a GSatMicro message
+#
+# sudo cp GSatMicroListener.service /etc/systemd/system/
+#
+# sudo systemctl daemon-reload
+# sudo systemctl enable GSatMicroListener.service
+# sudo systemctl start GSatMicroListener.service
+#
+# Sep-2019, Pat Welch, pat@mousebrains.com
+
+[Unit]
+Description=GSatMicro listener service
+
+[Service]
+# Type=simple # Default
+User=pat
+WorkingDirectory=/home/pat/GSatMicro/logs
+#
+ExecStart=/home/pat/GSatMicro/GSatMicroListener.py \
+	--logfile=listener.log \
+	--port=8888
+	--output=/home/pat/public_html/GSatMicro.data
+	
+RestartSec=60
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
