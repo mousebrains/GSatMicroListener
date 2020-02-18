@@ -15,14 +15,14 @@ Description=GSatMicro listener service
 [Service]
 # Type=simple # Default
 User=pat
-WorkingDirectory=/home/pat/GSatMicro/logs
+WorkingDirectory=/home/pat/logs
 #
-ExecStart=/home/pat/GSatMicro/GSatMicroListener.py \
+ExecStart=/home/pat/bin/GSatMicroListener.py \
 	--logfile=listener.log \
-	--port=8888
-	--output=/home/pat/public_html/GSatMicro.data
+	--port=9999 \
+	--output=GSatMicro.db
 	
-RestartSec=60
+RestartSec=120
 Restart=always
 
 [Install]
