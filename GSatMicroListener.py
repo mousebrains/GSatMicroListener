@@ -63,7 +63,7 @@ class Writer(threading.Thread):
             try:
                 self.logger.info('Creating database %s', fn)
                 with sqlite3.connect(fn) as conn:
-                    conn.execute('CREATE TABLE data(t REAL PRIMARY KEY, info TEXT);')
+                    conn.execute('CREATE TABLE data(t REAL PRIMARY KEY, addr TEXT, info TEXT);')
                     conn.commit()
             except:
                 self.logger.exception('Exception creating %s', fn)
@@ -71,12 +71,12 @@ class Writer(threading.Thread):
 
         while True: # Loop forever
             try:
-                (t, item) = self.q.get()
+                item = self.q.get()
                 self.q.task_done()
                 self.logger.info('Item=%s', item)
                 with sqlite3.connect(fn) as conn:
                     self.logger.info('t=%s item=%s', t, item)
-                    conn.execute('INSERT OR REPLACE INTO data VALUES(?,?);', (t, item))
+                    conn.execute('INSERT OR REPLACE INTO data VALUES(?,?,?);', item)
                     conn.commit()
             except:
                 self.logger.exception('Exception while writing to %s', fn)
@@ -108,7 +108,7 @@ class Parser(threading.Thread):
                     self.logger.debug('data=%s', data)
                     if not data: break # connection has dropped
                     msg += data
-            self.q.put((t0, self.__parser(msg)))
+            self.q.put((t0, self.addr, self.__parser(msg)))
         except:
             self.logger.exception('Exception while reading from address %s', self.addr)
 
