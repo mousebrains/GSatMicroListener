@@ -19,7 +19,7 @@ WorkingDirectory=/home/pat/logs
 #
 ExecStart=/home/pat/bin/GSatMicroListener.py \
 	--logfile=listener.log \
-	--port=9999 \
+	--port=6565 \
 	--output=GSatMicro.db
 	
 RestartSec=120
