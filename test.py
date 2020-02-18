@@ -19,13 +19,15 @@ parser.add_argument('--postDelay', type=float, help='Delay after sending data be
 args = parser.parse_args()
 
 logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler())
 logger.info('args=%s', args)
 
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        logger.info('Opened socket')
+        logger.info('Connecting to %s:%s', args.host, args.port)
         s.connect((args.host, args.port))
-        logger.info('Connected to host %s port %s', args.host, args.port)
+        logger.info('Connected to %s:%s', args.host, args.port)
         if args.preDelay is not None and args.preDelay > 0:
             logger.info('Sleeping %s seconds before sending the data')
             time.sleep(args.preDelay)
