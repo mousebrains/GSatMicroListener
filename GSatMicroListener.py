@@ -63,11 +63,13 @@ class Writer(threading.Thread):
             try:
                 self.logger.info('Creating database %s', fn)
                 with sqlite3.connect(fn) as conn:
-                    conn.execute('CREATE TABLE data(\n' \
-                            + '    t REAL PRIMARY KEY,\n' \
-                            + '    addr TEXT,\n' \
-                            + '    port INTEGER,\n' \
-                            + '    info TEXT' \
+                    conn.execute('CREATE TABLE data\n' \
+                            + '    -- GSatMicro messages\n' \
+                            + '    (\n' \
+                            + '    t REAL PRIMARY KEY, -- timestamp when connection was made\n' \
+                            + '    addr TEXT, -- IP address connection was from\n' \
+                            + '    port INTEGER, -- port number connect was from\n' \
+                            + '    info TEXT -- Body of the message\n' \
                             + ');')
                     conn.commit()
             except:
