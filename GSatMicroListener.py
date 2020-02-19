@@ -40,7 +40,7 @@ def mkLogger(args:argparse.ArgumentParser) -> logging.Logger:
         logger.setLevel(logging.INFO)
         ch.setLevel(logging.INFO)
 
-    formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
+    formatter = logging.Formatter('%(asctime)s %(threadName)s %(levelname)s: %(message)s')
     ch.setFormatter(formatter)
 
     logger.addHandler(ch)
@@ -51,7 +51,7 @@ class Writer(threading.Thread):
     ''' Wait on a queue, and write the item to a file '''
     def __init__(self, fn:str, logger:logging.Logger):
         threading.Thread.__init__(self, daemon=True)
-        self.name = 'Parser'
+        self.name = 'Writer'
         self.fn = fn
         self.logger = logger
         self.q = queue.Queue()
@@ -91,7 +91,7 @@ class Parser(threading.Thread):
     ''' Read from a connection, parse it, and send to the output queue '''
     def __init__(self, conn, addr, logger:logging.Logger, q:queue.Queue):
         threading.Thread.__init__(self, daemon=True)
-        self.name = 'Parser'
+        self.name = 'Parser({}:{})'.format(addr[0], addr[1])
         self.conn = conn
         self.addr = addr
         self.logger = logger
