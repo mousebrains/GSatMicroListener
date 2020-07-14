@@ -34,8 +34,9 @@ class Forwarder(threading.Thread):
         logger.info("Starting %s:%s", hostname, port)
         while True:
             (t, addr, msg) = q.get()
-            q.task_done()
-            if hostname is None or port is None: continue # Do nothing
+            if hostname is None or port is None: # Do nothing
+                q.task_done() # I'm done processing this message
+                continue # Do nothing
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     logger.debug("Opened socket")
@@ -49,3 +50,4 @@ class Forwarder(threading.Thread):
                         msg = msg[n:]
             except:
                 logger.exception("Error sending to %s:%s", hostname, port)
+            q.task_done() # I'm done processing this message
