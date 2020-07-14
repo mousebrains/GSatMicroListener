@@ -6,6 +6,7 @@
 # July-2020, Pat Welch, pat@mousebrains.com
 
 import datetime as dt
+import logging
 
 class BitArray:
     def __init__(self, payload:bytes) -> None:
@@ -22,11 +23,12 @@ class BitArray:
 
 class Message(dict):
     """ A Mobile Originated message decoded """
-    def __init__(self, msg:bytes) -> None:
+    def __init__(self, msg:bytes, logger:logging.Logger) -> None:
         super().__init__(self) # Initialize dict
+        self.logger = logger
         self.__parse(msg)
 
-    def __parse(self, msg:bytes):
+    def __parse(self, msg:bytes) -> None:
         """ Parse a mobile originated packet 
         DirectIP SBD message parsing
         See the "Iridium Short Burst Data Service Developers GUide, pages 16+
@@ -34,14 +36,18 @@ class Message(dict):
         https://en.wikipedia.org/wiki/Draft:GSE_Open_GPS_Protocol
         """
 
+        if len(msg) == 0: return
+
         version = msg[0]
         if version != 1: # I only know how to parse version 1 messages
-            raise Exception("Invalid message version byte, {} != 1, {}".format(version, msg))
+            self.logger.error("Invalid message version byte, %s != 1, %s", version, msg)
+            return
         
         n = int.from_bytes(msg[1:3], "big")
         payload = msg[3:]
         if len(payload) != n:
-            raise Exception("Invalid message length({}) != {}, {}".format(n, len(payload), msg))
+            self.logger.error("Invalid message length %s != %s, %s", n, len(payload), msg)
+            return
         
         # Now process the MO Information Elements, see sectioin 6.2.4
         while len(payload): # Walk through the information elements
@@ -52,14 +58,15 @@ class Message(dict):
             elif hdr == 3: self.__location(payload, n)
             elif hdr == 4: self.__confirmation(payload, n)
             else:
-                raise Exception('Unrecognized MO Header IEI, {}, payload {}, msg {}'.format(
-                    hdr, payload, msg))
+                self.logger.error("Unrecognized MO Header IEI, %s, payload %s, msg %s", hdr, payload, msg)
+                return
             payload = payload[(3 + n):]
     
     def __header(self, msg:bytes, n:int) -> None:
         """ See table 6.4 """
         if n != 28:
-            raise Exception('Invalid MO IE Header length, {}, in {}'.format(n, msg))
+            self.logger.error("Invalid MO IE Header length, %s, in %s", n, msg)
+            return
         self['cdr'] = int.from_bytes(msg[4:8], "big")
         self['IMEI'] = str(msg[7:22], 'utf-8')
         self['statSession'] = msg[22]
@@ -71,16 +78,19 @@ class Message(dict):
     def __location(self, msg: bytes, n:int) -> None:
         """ See section 6.2.6 """
         if n != 11:
-            raise Exception('Invalid MO IE Location length, {}, in {}'.format(n, msg))
+            self.logger.error("Invalid MO IE Location length, %s, in %s", n, msg)
+            return
         resvBits = (msg[3] & 0xf0) >> 4 # Should always be zero
         fmtBits = (msg[3] & 0x0c) >> 2 # Should always be zero
         nsBit = (msg[3] & 0x02) >> 1 # North=0 South=1
         ewBit = msg[3] & 0x01 # East=0 West=1
         
         if resvBits != 0:
-            raise Exception('Invalid MO IE Reserved bits, {}, in {}'.format(resvBits, msg))
+            self.logger.error("Invalid MO IE reserved bits, %s, in %s", resvBits, msg)
+            return
         if fmtBits != 0:
-            raise Exception('Invalid MO IE format code, {}, in {}'.format(fmtBits, msg))
+            self.logger.error("Invalid MO IE format code, %s, in %s", fmtBits, msg)
+            return
 
         latDeg = msg[4]
         latMin = int.from_bytes(msg[5:7], "big")
@@ -97,7 +107,8 @@ class Message(dict):
 
     def __confirmation(self, msg:bytes, n:int) -> None:
         if n != 1:
-            raise Exception("Invalid MO IE Confirmation length, {}, in {}".format(n, msg))
+            self.logger.error("Invalid MO IE Confirmation length, %s, in %s", n, msg)
+            return
         self['confirmation'] = msg[3]
 
     def __payload(self, msg:bytes, n:int) -> None:
@@ -105,7 +116,8 @@ class Message(dict):
         https://en.wikipedia.org/wiki/Draft:GSE_Open_GPS_Protocol
         """
         if n > len(msg[3:]):
-            raise Exception('Payload is too short, {} < {}, {}'.format(len(msg[3:]), n, msg))
+            self.logger.error("MO payload is too short, %s < %s, in %s", len(msg[3:]), n, msg)
+            return
         
         payload = msg[3:(n+3)] # Skip IE 1 byte header and 2 byte length
         hdr = payload[0] # Message block type
@@ -117,7 +129,8 @@ class Message(dict):
         elif hdr == 5: 
             self.__gps18Byte(body)
         else:
-            raise Exception("Unsupported payload type({}) in {}".format(hdr, msg))
+            self.logger.error("Unsupported MO payload type, %s, in %s", hdr, msg)
+            return
         self['payload'] = body
     
     def __gpsReserved(self, msg:bytes) -> None:
@@ -153,7 +166,8 @@ class Message(dict):
 
         magic = bits.getInt(0, 3)
         if magic != 0:
-            raise Exception('Invalid magic, {}, in payload, {}'.format(magic, msg))
+            self.logger.error("Invalid magic in 18Byte message, %s, %s", magic, msg)
+            return
 
         self['longitude'] = bits.getFloat(3, 26) / 186413 - 180
         self['extPwr'] = bits.getInt(29, 1) != 0
