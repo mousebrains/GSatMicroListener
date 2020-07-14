@@ -75,7 +75,8 @@ class MOM:
             self.cols.add(row[1])
 
     def insert(self, cur:sqlite3.Cursor, t:datetime, addr:str, port:int, msg:bytes) -> None:
-        a = Message(msg)
+        a = Message(msg, self.logger)
+        if not a.qSave(): return
         names = ['tRecv']
         vals = [t]
         for key in a:
@@ -121,9 +122,8 @@ class Writer(threading.Thread):
             self.logger.exception("Error creating tables in %s", self.dbName)
 
         while True: # Loop forever
+            (t, addr, msg) = self.q.get()
             try:
-                (t, addr, msg) = self.q.get()
-                self.q.task_done()
                 self.logger.info('t=%s addr=%s:%s msg=%s', t, addr[0], addr[1], msg)
                 with sqlite3.connect(self.dbName) as conn:
                     self.logger.info('%s', msg)
@@ -133,3 +133,4 @@ class Writer(threading.Thread):
                     conn.commit()
             except:
                 self.logger.exception('Exception while writing to %s', self.dbName)
+            self.q.task_done()
