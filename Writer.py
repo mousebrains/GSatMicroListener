@@ -50,7 +50,7 @@ class MOM:
         sql+= "    longitudeMO DOUBLE PRECISION, -- longitude from Iridium Satellites\n"
         sql+= "    radiusMO INTEGER, -- radius in meters of lat/lonMO accuracy\n"
         sql+= "    -- MOM payload\n"
-        sql+= "    payload TEXT, -- Payload that can be decrypted latter if need be\n"
+        sql+= "    payload BLOB, -- Payload that can be decrypted latter if need be\n"
         sql+= "    t TIMESTAMP WITH TIME ZONE, -- GPS fix time\n"
         sql+= "    latitude DOUBLE PRECISION DEFAULT NULL, -- GPS latitude\n"
         sql+= "    longitude DOUBLE PRECISION DEFAULT NULL, -- GPS longitude\n"
