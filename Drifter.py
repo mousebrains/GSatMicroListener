@@ -12,15 +12,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-
-def distance(lat0, lon0, lat1, lon1):
-    """ Geodesic distance in meters on the earth's surface using haversine """
-    (lat0, lon0, lat1, lon1) = np.radians((lat0, lon0, lat1, lon1))
-    a = \
-            np.sin((lat1 - lat0) / 2.)**2 + \
-            np.cos(lat0) * np.cos(lat1) * np.sin((lon1 - lon0) / 2.)**2
-    earthRadius = 6371 * 1000 
-    return earthRadius * 2 * np.arcsin(np.sqrt(a))
+from geopy.distance import geodesic
 
 class Drifter:
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
@@ -88,10 +80,14 @@ class Drifter:
         (tMax, data) = self.__fetch() # Fetch rows from database
         tt = (t - tMax).total_seconds()
         data['dt'] = (data['t'] - max(data['t'])).dt.total_seconds()
-        data['latPerDeg'] = distance(data['lat'] - 0.5, data['lon'], data['lat'] + 0.5, data['lon'])
-        data['lonPerDeg'] = distance(data['lat'], data['lon'] - 0.5, data['lat'], data['lon'] + 0.5)
-        data['accLat'] = data['accuracy'] / data['latPerDeg'] 
-        data['accLon'] = data['accuracy'] / data['lonPerDeg'] 
+        data['latPerDeg'] = geodesic(
+                (data['lat']-0.5, data['lon']),
+                (data['lat']+0.5, data['lon'])).meters
+        data['lonPerDeg'] = geodesic(
+                (data['lat'], data['lon']-0.5),
+                (data['lat'], data['lon']+0.5)).meters
+        data['accLat'] = data['accuracy'] / data['latPerDeg']
+        data['accLon'] = data['accuracy'] / data['lonPerDeg']
         data['wghtLat'] = 1 / (data['accLat'] ** 2)
         data['wghtLon'] = 1 / (data['accLon'] ** 2)
         data['wghtLat'] = data['wghtLat'] / max(data['wghtLat'])
@@ -105,15 +101,15 @@ class Drifter:
         lm = LinearRegression()
         lm.fit(dt, data['lat'], data['weightLat'])
         info = pd.DataFrame(lm.predict(tt), columns=["lat"])
-        info['vy'] = distance(
-                data['lat'][0], data['lon'][0], 
-                data['lat'][0] + lm.coef_, data['lon'][0])
+        info['vy'] = geodesic(
+                (data['lat'][0], data['lon'][0]),
+                (data['lat'][0] + lm.coef_, data['lon'][0])).meters
         data['latP'] = lm.predict(dt)
         lm.fit(dt, data['lon'], data['weightLon'])
         info['lon'] = lm.predict(tt)
-        info['vx'] = distance(
-                data['lat'][0], data['lon'][0], 
-                data['lat'][0], data['lon'][0] + lm.coef_)
+        info['vx'] = geodesic(
+                (data['lat'][0], data['lon'][0]),
+                (data['lat'][0], data['lon'][0] + lm.coef_)).meters
         data['lonP'] = lm.predict(dt)
         return info
 
