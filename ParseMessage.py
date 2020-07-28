@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 # 
 # Parse Mobile Originated Message from GSatMicro
 #
@@ -49,7 +50,7 @@ class Message(dict):
             self.logger.error("Invalid message length %s != %s, %s", n, len(payload), msg)
             return
         
-        # Now process the MO Information Elements, see sectioin 6.2.4
+        # Now process the MO Information Elements, see section 6.2.4
         while len(payload): # Walk through the information elements
             hdr = payload[0] # See table 6.3
             n = int.from_bytes(payload[1:3], "big")
@@ -67,7 +68,7 @@ class Message(dict):
         if n != 28:
             self.logger.error("Invalid MO IE Header length, %s, in %s", n, msg)
             return
-        self['cdr'] = int.from_bytes(msg[4:8], "big")
+        self['cdr'] = int.from_bytes(msg[3:7], "big")
         self['IMEI'] = str(msg[7:22], 'utf-8')
         self['statSession'] = msg[22]
         self['MOMSN'] = int.from_bytes(msg[23:25], "big")
@@ -191,3 +192,22 @@ class Message(dict):
             if 'tSession' not in self: return False
             self['t'] = self['tSession']
         return True
+
+if __name__ == "__main__":
+    import argparse
+    import MyLogger
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("fn", nargs='+', type=str, help="List of binary strings to parse")
+    MyLogger.addArgs(parser)
+    args = parser.parse_args()
+    logger = MyLogger.mkLogger(args)
+
+    for fn in args.fn:
+        with open(fn, "r") as fp:
+            for line in fp:
+                x = eval(line)
+                print("n", len(x), x)
+                msg = Message(x, logger)
+                for key in sorted(msg):
+                    print(key, "->", msg[key])
