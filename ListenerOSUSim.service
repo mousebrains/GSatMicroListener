@@ -1,0 +1,44 @@
+#
+# Listen for dialog from a glider and write a goto
+# so that it will follow a drifter in a predetermined
+# pattern
+#
+# sudo cp ListenOSUSim.service /etc/systemd/system/
+#
+# sudo systemctl daemon-reload
+# sudo systemctl enable ListenOSUSim.service
+# sudo systemctl start ListenOSUSim.service
+#
+# Aug-2020, Pat Welch, pat@mousebrains.com
+
+[Unit]
+Description=SFMC API listener service for OSUSim
+
+[Service]
+# Type=simple # Default
+User=pat
+WorkingDirectory=/home/pat/logs
+#
+ExecStart=/home/pat/bin/Listener.py \
+	--logfile=OSUSim.log \
+	--drifterDB=GSatMicro.db \
+	--apiListen \
+	--apiDir=/home/pat/sfmc-rest-programs \
+	--apiCopy=osusim.api.txt \
+	--drifterNBack=10 \
+	--drifterTau=60 \
+	--gotoAPI=/tmp \
+	--gotoRetain \
+	--gotoDT=900 \
+	--gotoArchive=. \
+	--gotoIndex=1000 \
+	--pattern=patterns.yaml \
+	--mailTo=pat@mousebrains.com \
+	--glider=osusim
+
+RestartSec=10
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
