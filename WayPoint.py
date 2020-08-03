@@ -51,7 +51,7 @@
 
 import math
 import copy
-from geopy.distance import geodesic
+from geopy.distance import distance as geodesic
 
 class Point:
     def __init__(self, x:float, y:float) -> None:
