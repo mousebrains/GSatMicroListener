@@ -26,8 +26,10 @@ class Forwarder(threading.Thread):
         grp.add_argument("--portForward", type=int, metavar='port',
                 help="Port to forward packets to")
 
-    def put(self, obj) -> None:
-        self.q.put(obj)
+    def put(self, msg) -> None:
+        t = None
+        addr = None
+        self.q.put((t, addr, msg))
 
     def run(self) -> None: # Called on thread start
         hostname = self.hostname
