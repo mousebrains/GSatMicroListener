@@ -11,3 +11,14 @@ osu683:                         # Glider to work with
         - [-1, 0] # East, North
         - [ 0, 1] # East, North
         - [ 0,-1] # East, North
+
+osusim:                         # Glider to work with
+        IMEI: "300234068117290" # Which beacon to follow
+        qRotate: False          # Rotate the pattern so the x/eastward is along drifter velocity
+        norm: 707               # km to meters, 1000/root(2) so 1km on a side
+        theta: 0                # rotate pattern by this many degrees northwards
+        pattern:                # pattern in km with drifter at the center
+        - [ 1, 0] # East, North
+        - [-1, 0] # East, North
+        - [ 0, 1] # East, North
+        - [ 0,-1] # East, North
