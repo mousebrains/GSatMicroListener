@@ -12,19 +12,21 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
-from geopy.distance import geodesic
+from geopy.distance import distance as geodesic
 
 class Drifter:
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
         self.args = args
         self.logger = logger
+        self.IMEI = args.IMEI
         self.sql = "SELECT t,latitude, longitude,accuracy FROM mom"
-        self.vals = []
-        if args.tEarliest is not None:
-            self.sql+= " WHERE t>=?"
-            self.vals.append(args.tEarliest)
+        self.sql+= " WHERE IMEI=?"
+        self.vals = [self.IMEI]
+        if args.drifterTearliest is not None:
+            self.sql+= " AND t>=?"
+            self.vals.append(args.drifterTearliest)
         self.sql+= " ORDER BY t desc limit ?"
-        self.vals.append(args.nBack)
+        self.vals.append(args.drifterNBack)
 
     @staticmethod
     def mkTime(s): # For use in addArgs
@@ -42,17 +44,18 @@ class Drifter:
     @staticmethod
     def addArgs(parser:argparse.ArgumentParser) -> None:
         grp = parser.add_argument_group(description="Drifter options")
-        grp.add_argument("--db", type=str, required=True, metavar="filename",
+        grp.add_argument("--drifterDB", type=str, required=True, metavar="filename",
                 help="Drifter database name")
-        grp.add_argument("--nBack", type=int, default=10, metavar="count",
+        grp.add_argument("--drifterNBack", type=int, default=10, metavar="count",
                 help="Number of samples in the past to use in calculation")
-        grp.add_argument("--tau", type=float, default=60, metavar="minutes",
+        grp.add_argument("--drifterTau", type=float, default=60, metavar="minutes",
                 help="expoential downweighting factor for estimates in minutes")
-        grp.add_argument("--tEarliest", type=Drifter.mkTime, metavar="timestamp",
+        grp.add_argument("--drifterTearliest", type=Drifter.mkTime, metavar="timestamp",
                 help="Earliest time to fetch")
+        grp.add_argument("--IMEI", type=str, help="Drifter's IMEI to work with")
 
     def __fetch(self) -> tuple:
-        with sqlite3.connect(self.args.db) as conn:
+        with sqlite3.connect(self.args.drifterDB) as conn:
             cur = conn.cursor()
             cur.execute(self.sql, self.vals)
             data = None
@@ -78,21 +81,24 @@ class Drifter:
             then estimate the velocity and the position at time t
             """
         (tMax, data) = self.__fetch() # Fetch rows from database
+        if tMax is None: return None # No rows found
         tt = (t - tMax).total_seconds()
         data['dt'] = (data['t'] - max(data['t'])).dt.total_seconds()
-        data['latPerDeg'] = geodesic(
-                (data['lat']-0.5, data['lon']),
-                (data['lat']+0.5, data['lon'])).meters
-        data['lonPerDeg'] = geodesic(
-                (data['lat'], data['lon']-0.5),
-                (data['lat'], data['lon']+0.5)).meters
+
+        lat = data['lat'][0]
+        lon = data['lon'][0]
+        latPerDeg = geodesic((lat-0.5, lon), (lat+0.5, lon)).meters
+        lonPerDeg = geodesic((lat, lon-0.5), (lat, lon+0.5)).meters
+
+        data['latPerDeg'] = data['lat'] * 0 + latPerDeg
+        data['lonPerDeg'] = data['lon'] * 0 + lonPerDeg
         data['accLat'] = data['accuracy'] / data['latPerDeg']
         data['accLon'] = data['accuracy'] / data['lonPerDeg']
         data['wghtLat'] = 1 / (data['accLat'] ** 2)
         data['wghtLon'] = 1 / (data['accLon'] ** 2)
         data['wghtLat'] = data['wghtLat'] / max(data['wghtLat'])
         data['wghtLon'] = data['wghtLon'] / max(data['wghtLon'])
-        data['wghtDT'] = np.exp(data['dt'] / (self.args.tau * 60))
+        data['wghtDT'] = np.exp(data['dt'] / (self.args.drifterTau * 60))
         data['weightLat'] = data['wghtLat'] * data['wghtDT']
         data['weightLon'] = data['wghtLon'] * data['wghtDT']
         data['weightLat'] = data['weightLat'] / max(data['weightLat'])
@@ -104,13 +110,13 @@ class Drifter:
         info['vy'] = geodesic(
                 (data['lat'][0], data['lon'][0]),
                 (data['lat'][0] + lm.coef_, data['lon'][0])).meters
-        data['latP'] = lm.predict(dt)
         lm.fit(dt, data['lon'], data['weightLon'])
         info['lon'] = lm.predict(tt)
         info['vx'] = geodesic(
                 (data['lat'][0], data['lon'][0]),
                 (data['lat'][0], data['lon'][0] + lm.coef_)).meters
-        data['lonP'] = lm.predict(dt)
+        info['latPerDeg'] = latPerDeg
+        info['lonPerDeg'] = lonPerDeg
         return info
 
 if __name__ == "__main__":
