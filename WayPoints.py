@@ -19,6 +19,10 @@ class WayPoints(list):
             maxWayPoints:int = 7,
             maxDuration:float = 12*3600) -> None:
         list.__init__(self)
+        self.drifter = drifter
+        self.glider = glider
+        self.water = water
+        self.patterns = patterns
         self.index = index
 
         dt = 0
@@ -28,7 +32,7 @@ class WayPoints(list):
             index = self.__findClosest(drifter, glider, water, patterns)
             self.index = index
 
-        while (dt <= maxDuration) and (len(self) < maxWayPoints):
+        while ((dt <= maxDuration) or (len(self) < 2)) and (len(self) < maxWayPoints):
             if index >= len(patterns):
                 index = 0
             wpt = WayPoint.WayPoint(drft, gld, water, patterns[index])
@@ -62,6 +66,13 @@ class WayPoints(list):
         msg.append("behavior_name=goto_list")
         msg.append("# Drifter follower")
         msg.append("# Generated: " + str(t0.replace(microsecond=0)))
+        msg.append("# " + str(self.drifter))
+        msg.append("# " + str(self.glider))
+        msg.append("# " + str(self.water))
+        msg.append("# PATTERNS:")
+        for item in self.patterns:
+            msg.append("#   " + str(item))
+        msg.append("# index=" + str(self.index))
         msg.append("")
         msg.append("<start:b_arg>")
         msg.append("b_arg: num_legs_to_run(nodim) -1")
