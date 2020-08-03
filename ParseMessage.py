@@ -8,19 +8,7 @@
 
 import datetime as dt
 import logging
-
-class BitArray:
-    def __init__(self, payload:bytes) -> None:
-        self.payload = ""
-        for c in payload:
-            a = "{:08b}".format(c) # Convert to binary string, 0b01010101
-            self.payload += a # Append to the payload string
-
-    def getInt(self, offset:int, nBits:int) -> int:
-        return int(self.payload[offset:(offset+nBits)], 2)
-
-    def getFloat(self, offset:int, nBits:int) -> float:
-        return float(self.getInt(offset, nBits))
+from BitArray import BitArray
 
 class Message(dict):
     """ A Mobile Originated message decoded """
@@ -163,14 +151,21 @@ class Message(dict):
         and
         https://github.com/darren1713/GSatMicroPublic/blob/master/GSatMicroLibrary/GSatMicroPosition.cs
         """
+        self.logger.info("msg=%s", msg)
+        self.logger.info("int=%s", int.from_bytes(msg, "big"))
+        self.logger.info("bin=%s", "{:0152b}".format(int.from_bytes(msg, "big")))
         bits = BitArray(msg)
+        self.logger.info("GPS18 %s", msg)
+        self.logger.info("GPS18\n%s", bits)
 
         magic = bits.getInt(0, 3)
+        self.logger.info("magic %s %s", bits.get(0, 3), magic)
         if magic != 0:
             self.logger.error("Invalid magic in 18Byte message, %s, %s", magic, msg)
             return
 
         self['longitude'] = bits.getFloat(3, 26) / 186413 - 180
+        self.logger.info("lon %s %s %s", bits.get(3,26), bits.getInt(3,26), self['longitude'])
         self['extPwr'] = bits.getInt(29, 1) != 0
         self['qDistress'] = bits.getInt(30, 1) != 0
         self['qCheckin'] = bits.getInt(31, 1) != 0
@@ -183,7 +178,7 @@ class Message(dict):
         # self['climbRate'] = (bits.getFloat(101, 11) - math.pow(2, 10)) / 20
         self['climbRate'] = bits.getInt(101, 11) # Always zero?
         self['battery'] = bits.getInt(112, 5) * 3
-        self['speed'] = bits.getInt(117, 11)
+        self['speed'] = bits.getInt(117, 11) * 1000 / 3600 # kph -> m/sec
         self['altitude'] = bits.getInt(128, 16)
 
     def qSave(self) -> bool:
