@@ -34,6 +34,7 @@ ExecStart=/home/pat/bin/Listener.py \
 	--gotoIndex=1000 \
 	--pattern=patterns.yaml \
 	--mailTo=pat@mousebrains.com \
+	--mailTo=chondonn@oregonstate.edu \
 	--glider=osusim
 
 RestartSec=10
