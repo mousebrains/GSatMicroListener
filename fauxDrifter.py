@@ -103,7 +103,7 @@ class Payload:
                 help="Initial longitude in decimal degrees")
         grp.add_argument("--spd", type=float, default=0.1, metavar="m/s",
                 help="Central value of speed in m/sec")
-        grp.add_argument("--spdSigma", type=int, default=0.02, metavar="m/s",
+        grp.add_argument("--spdSigma", type=float, default=0.02, metavar="m/s",
                 help="Gaussian norm noise width of speed in m/sec")
         grp.add_argument("--hdg", type=float, default=60, metavar="degrees",
                 help="Central drifter heading in degrees from true north")
