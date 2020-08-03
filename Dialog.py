@@ -22,9 +22,11 @@ class MyPattern:
     @staticmethod
     def __mkDegrees(x:str) -> float:
         y = float(x)
-        deg = math.floor(y/100) # Degrees
-        minutes = y % 100 # Minutes
-        return deg + minutes / 60
+        yabs = abs(y)
+        deg = math.floor(yabs/100) # Degrees
+        minutes = yabs % 100 # Minutes
+        decDeg = deg + minutes / 60
+        return decDeg if y >= 0 else -decDeg
 
     @staticmethod
     def __strptime(val:str) -> datetime.datetime:
@@ -52,7 +54,7 @@ class MyPattern:
                 else:
                     raise Exception("Unrecognized conversion type, {}".format(cnv))
             except Exception as e:
-                logger.exception("Error converting {} to type {} for {}".format(
+                logging.exception("Error converting {} to type {} for {}".format(
                     val, cnv, key))
                 raise e
         return True
