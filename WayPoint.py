@@ -79,6 +79,13 @@ class Point:
         a.y *= rhs
         return a
 
+    def speed(self) -> float:
+        return math.sqrt(self.x * self.x + self.y * self.y)
+
+    def theta(self) -> float:
+        # x is east, y is north, so this is deg true
+        return math.degrees(math.atan2(self.x, self.y))
+
     def rotate(self, theta:float):
         a = copy.copy(self)
         if (theta is not None) and (theta != 0):
@@ -104,6 +111,9 @@ class LatLon:
         a.lat -= rhs.lat
         a.lon -= rhs.lon
         return a
+
+    def distance(lhs, rhs) -> float:
+        return geodesic((lhs.lat, lhs.lon), (rhs.lat, rhs.lon)).meters
 
     def delta(lhs, rhs) -> Point:
         lat0 = lhs.lat
