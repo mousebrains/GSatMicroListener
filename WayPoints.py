@@ -8,6 +8,7 @@ import WayPoint
 import copy
 import datetime
 import math
+from geopy.distance import distance as geodesic
 
 class WayPoints(list):
     def __init__(self, 
@@ -61,17 +62,38 @@ class WayPoints(list):
                 index = i
         return index
 
+    def __printDrifter(self, d:WayPoint.Drifter) -> list:
+        return [
+                "# DRIFTER pos: {:.6f}, {:.6f}".format(d.latLon.lat, d.latLon.lon),
+                "#         vel: {:.4f}, {:.4f} m/sec".format(d.v.x, d.v.y),
+                "#       speed: {:.4f} m/sec".format(d.v.speed()),
+                "#       theta: {:.1f} degrees true".format(d.v.theta()),
+                ]
+
+    def __printGlider(self, g:WayPoint.Glider) -> list:
+        return [
+                "# GLIDER  pos: {:.6f}, {:.6f}".format(g.latLon.lat, g.latLon.lon),
+                "#       speed: {:.4f} m/sec".format(g.speed),
+                ]
+
+    def __printWater(self, w:WayPoint.Water) -> list:
+        return [
+                "# WATER   vel: {:.4f}, {:.4f} m/sec".format(w.v.x, w.v.y),
+                "#       speed: {:.4f} m/sec".format(w.v.speed()),
+                "#       theta: {:.1f} degrees true".format(w.v.theta()),
+                ]
+
     def goto(self, t0:datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)) -> str:
         msg = []
         msg.append("behavior_name=goto_list")
         msg.append("# Drifter follower")
         msg.append("# Generated: " + str(t0.replace(microsecond=0)))
-        msg.append("# " + str(self.drifter))
-        msg.append("# " + str(self.glider))
-        msg.append("# " + str(self.water))
+        msg.extend(self.__printDrifter(self.drifter))
+        msg.extend(self.__printGlider(self.glider))
+        msg.extend(self.__printWater(self.water))
         msg.append("# PATTERNS:")
-        for item in self.patterns:
-            msg.append("#   " + str(item))
+        for index in range(len(self.patterns)):
+            msg.append("#   i={} {}".format(index, self.patterns[index]))
         msg.append("# index=" + str(self.index))
         msg.append("")
         msg.append("<start:b_arg>")
@@ -82,12 +104,15 @@ class WayPoints(list):
         msg.append("b_arg: num_waypoints(enum) {}".format(len(self)))
         msg.append("<end:b_arg>")
         msg.append("<start:waypoints>")
+        prevLatLon = self.glider.latLon
         for item in self:
             (wpt, dt, index) = item
             (lat, lon) = wpt.wpt.goto()
+            dist = wpt.wpt.distance(prevLatLon)
+            prevLatLon = wpt.wpt
             t = (t0 + datetime.timedelta(seconds=dt)).replace(microsecond=0)
             dt = datetime.timedelta(seconds=math.floor(wpt.dt))
-            msg.append("{} {} # i={}, dt={} {}".format(lon, lat, index, dt, t))
+            msg.append("{} {} # i={}, dist={:.0f}m, dt={}, {}".format(lon, lat, index, dist, dt, t))
         msg.append("<end:waypoints>")
         return "\n".join(msg)
 
