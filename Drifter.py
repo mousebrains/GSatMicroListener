@@ -82,7 +82,7 @@ class Drifter:
             """
         (tMax, data) = self.__fetch() # Fetch rows from database
         if tMax is None: return None # No rows found
-        tt = (t - tMax).total_seconds()
+        tt = pd.DataFrame([(t - tMax).total_seconds()], columns=['dt'])
         data['dt'] = (data['t'] - max(data['t'])).dt.total_seconds()
 
         lat = data['lat'][0]
