@@ -62,6 +62,8 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
     <initialState name="T0WaitForSurfacing">
         <transitions>
             <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDockzr">
+                <!-- Swallow the first control-J, I don't know why it is there! -->
+                <action type="glider" command="Ctrl-H" />
                 <!-- on next call in use the primary number -->
                 <action type="glider" command="!put c_iridium_current_num 0" />
                     <!-- Send any files in to-glider to glider first in case the connection drops 
@@ -78,6 +80,8 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
     <state name="T1WaitForSurfacing">
         <transitions>
             <transition matchExpression="Hit Control-R to RESUME" toState="T1VerDockzr">
+                <!-- Swallow the first control-J, I don't know why it is there! -->
+                <action type="glider" command="Ctrl-H" />
                 <!-- on next call in use the primary number -->
                 <action type="glider" command="!put c_iridium_current_num 0" />
                 <!-- Send any files in to-glider to glider first in case the connection drops -->
@@ -381,8 +385,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             "Total Bytes sent/received: " or
             "Starting zModem transfer of"
         messages which reset the timer.
-        Since there is no science, skip sending dockszr and go straight 
-        to getting device information
+        Since there is no science, skip sending dockszr and go straight sending any new MA files
      -->
     <state name="T2WaitGldSend">
         <transitions>
@@ -395,8 +398,8 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             </transition>
             <!-- If the zModem transfer was successful, go send the next command. -->
             <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
-                toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
+                toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
             </transition>
             <!-- Look for trigger messages to reset the timer -->
             <transition
@@ -419,7 +422,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             "Starting zModem transfer of"
         messages which reset the timer.
         Since there is no science, skip sending dockszr and go straight to
-        getting device information
+        trying to send any new MA files
 
         N.B. This stanza has not been tested!!!!! It is ripped from Mark Worden's sfmc.xml
              with the last four transitions added!
@@ -434,17 +437,17 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
                 <action type="glider" command="s *.sbd *.tbd" />
             </transition>
             <!-- If the zModem transfer was successful, go send the next command. -->
-            <transition matchExpression="SUCCESS" toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
+            <transition matchExpression="SUCCESS" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
             </transition>
             <!-- If there were no files to transfer, go send the next command. -->
-            <transition matchExpression="NO TRANSMISSION" toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
+            <transition matchExpression="NO TRANSMISSION" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
             </transition>
             <!-- If the transfer explicitly failed, do not attempt to resend the command
                  (it may fail indefinately many times) and go send the next command. -->
-            <transition matchExpression="Error sending files" toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
+            <transition matchExpression="Error sending files" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
             </transition>
             <!-- Look for trigger messages to reset the timer -->
             <transition
@@ -475,8 +478,8 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <!-- If the command echo is seen, go wait for the zModem transfer to complete. -->
             <transition matchExpression="!szr" toState="T0WaitDockszr" />
             <!-- If no files were found, send the Control-W to get device information. -->
-            <transition matchExpression="not found" toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
+            <transition matchExpression="not found" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
             </transition>
             <!-- If the glider connection is dropped,
                  attempt to resend the command when the next surface dialog is seen. -->
@@ -507,13 +510,13 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
                 <action type="glider" command="!dockszr -archive *" />
             </transition>
             <!-- If the transfer was successful, get device information. -->
-            <transition matchExpression="Done!" toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
+            <transition matchExpression="Done!" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
             </transition>
             <!-- If the transfer explicitly failed, assume it would repeatedly fail.
                  So do not resend and send the next command. -->
-            <transition matchExpression="FAILED: zr" toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
+            <transition matchExpression="FAILED: zr" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
             </transition>
             <!-- Look for trigger messages to reset the timer -->
             <transition
@@ -523,52 +526,6 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <transition matchExpression="Connection Event: Carrier Detect lost."
                 toState="T0WaitDockszr" />
             <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
-            <transition timeout="10" toState="T0WaitForSurfacing" />
-        </transitions>
-    </state>
-
-    <!--
-     This state waits to see the control-W was accepted
-     -->
-    <state name="T0VerDevice">
-        <transitions>
-            <!-- If a surface dialog is seen after sending the Ctrl-W but
-                 before an indication of its success, assume the command was missed by the glider.
-                 Resend it and wait for success or failure.  -->
-            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDevice">
-                <action type="glider" command="Ctrl-W" />
-            </transition>
-            <transition matchExpression="name in ALLCAPS means CRITICAL device"
-                toState="T0WaitDevice" />
-            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
-            <transition matchExpression="Connection Event: Carrier Detect lost."
-                toState="T0VerDevice" />
-            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
-                 start of the script in preparation for the next surfacing. -->
-            <transition timeout="10" toState="T0WaitForSurfacing" />
-        </transitions>
-    </state>
-
-
-    <!--
-     This state waits to see the devices list print out and then submits a Ctrl-R to resume.
-    -->
-    <state name="T0WaitDevice">
-        <transitions>
-            <!-- If the divices: is missed resume the mission -->
-            <transition matchExpression="Hit Control-R to RESUME" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
-            <!-- If devices list is seen, assume the glider is ready to receive a command and send
-            the Ctrl-R. -->
-            <transition matchExpression="devices:" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
-            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
-            <transition matchExpression="Connection Event: Carrier Detect lost."
-                toState="T0WaitDevice" />
-            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
-            start of the script in preparation for the next surfacing. -->
             <transition timeout="10" toState="T0WaitForSurfacing" />
         </transitions>
     </state>
@@ -584,9 +541,9 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             </transition>
             <!-- If the command echo is seen, go wait for the zModem transfer to complete. -->
             <transition matchExpression="!zr" toState="T4WaitDockzr" />
-            <!-- If no files to send, resume the mission -->
-            <transition matchExpression="not found" toState="T0VerResume">
-                <action type="glider" command="Ctrl-R" />
+            <!-- If no files to send, get device information -->
+            <transition matchExpression="not found" toState="T0VerDevice">
+                <action type="glider" command="Ctrl-W" />
             </transition>
             <!-- If the glider connection is dropped, then go back and wait for a new connection -->
             <transition matchExpression="Connection Event: Carrier Detect lost."
@@ -622,8 +579,8 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             </transition>
             <!-- If the transfer explicitly failed, assume it would repeatedly fail.
                  So do not resend and send the next command. -->
-            <transition matchExpression="FAILED: zr" toState="T0VerResume">
-                <action type="glider" command="Ctrl-R" />
+            <transition matchExpression="FAILED: zr" toState="T0VerDevice">
+                <action type="glider" command="Ctrl-W" />
             </transition>
             <!-- If the carrier drops, cycle around and wait for it to come back or
                 timeout in this state -->
@@ -652,9 +609,9 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <transition matchExpression="Hit Control-R to RESUME" toState="T4VerReloadMA">
                 <action type="glider" command="Ctrl-F" />
             </transition>
-            <!-- Once the Ctrl-F is confirmed, resume the mission -->
-            <transition matchExpression="MAFILES will be re-read" toState="T0VerResume">
-                <action type="glider" command="Ctrl-R" />
+            <!-- Once the Ctrl-F is confirmed, get device information -->
+            <transition matchExpression="MAFILES will be re-read" toState="T0VerDevice">
+                <action type="glider" command="Ctrl-W" />
             </transition>
             <!-- If the carrier drops, then cycle back in this state restarting the timer -->
             <transition matchExpression="Connection Event: Carrier Detect lost."
@@ -663,6 +620,52 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
                  assume the glider dove.  Go to the script's first state in preparation
                  for the next surfacing. We will send another control-F -->
             <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state waits to see the control-W was accepted
+     -->
+    <state name="T0VerDevice">
+        <transitions>
+            <!-- If a surface dialog is seen after sending the Ctrl-W but
+                 before an indication of its success, assume the command was missed by the glider.
+                 Resend it and wait for success or failure.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDevice">
+                <action type="glider" command="Ctrl-W" />
+            </transition>
+            <transition matchExpression="name in ALLCAPS means CRITICAL device"
+                toState="T0WaitDevice" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0VerDevice" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+                 start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+
+    <!--
+     This state waits to see the devices list print out and then submits a Ctrl-R to resume.
+    -->
+    <state name="T0WaitDevice">
+        <transitions>
+            <!-- If the divices: is missed resume the mission -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerResume">
+                <action type="glider" command="Ctrl-R" />
+            </transition>
+            <!-- If devices list is seen, assume the glider is ready to receive a command and send
+            the Ctrl-R. -->
+            <transition matchExpression="devices:" toState="T0VerResume">
+                <action type="glider" command="Ctrl-R" />
+            </transition>
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0WaitDevice" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+            start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
         </transitions>
     </state>
 
