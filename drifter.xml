@@ -63,7 +63,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
         <transitions>
             <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDockzr">
                 <!-- Swallow the first control-J, I don't know why it is there! -->
-                <action type="glider" command="Ctrl-H" />
+                <action type="glider" command="!get m_battery" />
                 <!-- on next call in use the primary number -->
                 <action type="glider" command="!put c_iridium_current_num 0" />
                     <!-- Send any files in to-glider to glider first in case the connection drops 
@@ -81,7 +81,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
         <transitions>
             <transition matchExpression="Hit Control-R to RESUME" toState="T1VerDockzr">
                 <!-- Swallow the first control-J, I don't know why it is there! -->
-                <action type="glider" command="Ctrl-H" />
+                <action type="glider" command="!get m_battery" />
                 <!-- on next call in use the primary number -->
                 <action type="glider" command="!put c_iridium_current_num 0" />
                 <!-- Send any files in to-glider to glider first in case the connection drops -->
@@ -535,6 +535,14 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
      -->
     <state name="T4VerDockzr">
         <transitions>
+             <!-- If a surface dialog is seen, assume the "!dockzr" command was missed by 
+              the glider or that the glider connection dropped
+              (possibly cancelling the transfer) and it called back - either on
+              the next surfacing or the same surfacing.
+              Resend the command -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
             <!-- If the "!dockzr" command fails to verify then attempt to resend the command. -->
             <transition matchExpression="xxx command verify fail xxx" toState="T4VerDockzr">
                 <action type="glider" command="!dockzr -archive *" />
@@ -549,7 +557,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <transition matchExpression="Connection Event: Carrier Detect lost."
                 toState="T4VerDockzr" />
             <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
-            <transition timeout="10" toState="T0WaitForSurfacing" />
+            <transition timeout="10" toState="T1WaitForSurfacing" />
         </transitions>
     </state>
 
@@ -587,7 +595,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <transition matchExpression="Connection Event: Carrier Detect lost."
                 toState="T4WaitDockzr" />
             <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
-            <transition timeout="10" toState="T0WaitForSurfacing" />
+            <transition timeout="10" toState="T1WaitForSurfacing" />
         </transitions>
     </state>
 
