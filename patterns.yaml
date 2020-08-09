@@ -1,7 +1,7 @@
 #
 # Patterns for flying a glider around a moving drifter
 #
-osu683:                         # Glider to work with
+osu684:                         # Glider to work with
         IMEI: "300234068117290" # Which beacon to follow
         qRotate: False          # Rotate the pattern so the x/eastward is along drifter velocity
         norm: 707               # km to meters, 1000/root(2) so 1km on a side
