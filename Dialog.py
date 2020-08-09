@@ -8,7 +8,11 @@ import re
 import math
 import datetime
 import logging
-import WayPoint
+import threading
+import argparse
+import queue
+import sqlite3
+from Update import Update
 
 class MyPattern:
     def __init__(self, types:tuple, keys:tuple, expr:str) -> None:
@@ -32,60 +36,69 @@ class MyPattern:
     def __strptime(val:str) -> datetime.datetime:
         return datetime.datetime.strptime(val, "%c").replace(tzinfo=datetime.timezone.utc)
 
-    def check(self, line:str, obj:dict, logger:logging.Logger) -> bool:
+    def check(self, line:str, logger:logging.Logger) -> dict:
         a = self.expr.fullmatch(line)
-        if a is None: return False
+        if a is None: return None
 
+        info = {}
         for index in range(len(self.keys)):
             key = self.keys[index]
             cnv = self.types[index]
             val = a[index + 1]
             try:
                 if cnv == "float":
-                    obj[key] = float(val)
+                    info[key] = float(val)
                 elif cnv == "int":
-                    obj[key] = int(val)
+                    info[key] = int(val)
                 elif cnv == "degMin":
-                    obj[key] = self.__mkDegrees(val)
+                    info[key] = self.__mkDegrees(val)
                 elif cnv == "datetime":
-                    obj[key] = self.__strptime(val)
+                    info[key] = self.__strptime(val)
                 elif cnv == "TRUE":
-                    obj[key] = True
+                    info[key] = True
                 else:
                     raise Exception("Unrecognized conversion type, {}".format(cnv))
-            except Exception as e:
-                logging.exception("Error converting {} to type {} for {}".format(
+            except:
+                logger.exception("Error converting {} to type {} for {}".format(
                     val, cnv, key))
-                raise e
-        return True
+                return None
+        return info
 
 numPattern = r"([+-]?\d*[.]?\d+|[+-]?\d*[.]?\d+[Ee][+-]?\d+)"
 
 patterns = [
-        MyPattern("float", "speed", r"m_avg_speed[(]m/s[)]\s+" + numPattern),
+        MyPattern("float", "m_avg_speed", r"m_avg_speed[(]m/s[)]\s+" + numPattern),
         MyPattern("datetime", "t",
             r"Curr Time:\s+(\w+\s+\w+\s+\d{2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+MT:\s*\d+"),
         MyPattern(("degMin", "degMin", "float"), ("lat", "lon", "dtLatLon"),
             r"GPS\s+Location:\s+" + numPattern + r"\s+[NS]\s+" +
             numPattern + r"\s+[EW]\s+measured\s+" + numPattern + r"\s+secs ago"),
-        MyPattern(("degMin", "float"), ("latWpt", "dtLatWpt"),
+        MyPattern(("degMin", "float"), ("c_wpt_lat", "c_wpt_lat_dt"),
             r"sensor:c_wpt_lat[(]lat[)]=" + numPattern + r"\s+" + numPattern + r"\s+secs ago"),
-        MyPattern(("degMin", "float"), ("lonWpt", "dtLonWpt"),
+        MyPattern(("degMin", "float"), ("c_wpt_lon", "c_wpt_lon_dt"),
             r"sensor:c_wpt_lon[(]lon[)]=" + numPattern + r"\s+" + numPattern + r"\s+secs ago"),
-        MyPattern(("float", "float"), ("vx", "dtVx"),
+        MyPattern(("float", "float"), ("m_water_vx", "m_water_vx_dt"),
             r"sensor:m_water_vx[(]m/s[)]=" + numPattern + r"\s+" + numPattern + r"\s+secs ago"),
-        MyPattern(("float", "float"), ("vy", "dtVy"),
+        MyPattern(("float", "float"), ("m_water_vy", "m_water_vy_dt"),
             r"sensor:m_water_vy[(]m/s[)]=" + numPattern + r"\s+" + numPattern + r"\s+secs ago"),
         MyPattern("TRUE", "FLAG", r"s \*[.](sbd|tbd) \*[.](sbd|tbd)"),
         ] 
 
-class Dialog(dict):
-    def __init__(self, logger:logging.Logger):
-        dict.__init__(self)
+class Dialog(threading.Thread):
+    def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger):
+        threading.Thread.__init__(self, daemon=True)
+        self.name = "Dialog"
+        self.args = args
         self.logger = logger
-        for item in patterns:
-            for key in item.keys:
-                self[key] = None
+        self.__queue = queue.Queue()
+        self.__update = Update(args, logger)
+
+    @staticmethod
+    def addArgs(parser:argparse.ArgumentParser) -> None:
+        Update.addArgs(parser)
+        grp = parser.add_argument_group(description="Dialog related options")
+        grp.add_argument("--gliderDB", type=str, metavar="filename", required=True,
+                help="Name of glider database")
 
     def __repr__(self) -> str:
         msg = []
@@ -93,43 +106,84 @@ class Dialog(dict):
             msg.append("{}={}".format(key, self[key]))
         return "\n".join(msg)
 
-    def __iadd__(self, line:str):
-        line = line.strip()
-        for pattern in patterns:
-            if pattern.check(line, self, self.logger): break
-        return self
+    def put(self, line:str) -> None:
+        self.__queue.put((datetime.datetime.now(tz=datetime.timezone.utc), line))
 
-    def flagged(self) -> bool:
-        key = "FLAG"
-        rc = self[key] if (key in self) and (self[key] is not None) else False
-        self[key] = None
-        return rc
+    def run(self) -> None: # Called on start
+        args = self.args
+        logger = self.logger
+        q = self.__queue
+        update = self.__update
 
-    def glider(self) -> WayPoint.Glider:
-        spd = 0.3 if self['speed'] is None else self['speed']
-        return WayPoint.Glider(self['lat'], self['lon'], spd)
+        logger.info("Starting")
 
-    def water(self) -> WayPoint.Water:
-        return WayPoint.Water(self['vx'], self['vy'])
+        update.start()
+
+        db = None
+        timeout = 300 # Close database if no communications for this long
+        sql = "INSERT OR REPLACE INTO glider VALUES(?,?,?);"
+
+        while True:
+            (t, line) = q.get(timeout=None if db is None else timeout)
+            try:
+                line = line.strip()
+                for pattern in patterns:
+                    info = pattern.check(line, logger)
+                    if info is None: continue
+                    if db is None:
+                        db = self.__makeDB(args.gliderDB)
+                        cur = db.cursor()
+                    for key in info:
+                        cur.execute(sql, (t, key, info[key]))
+                    db.commit()
+                    if "FLAG" in info: update.put(t, args.gliderDB)
+                    break
+            except queue.Empty:
+                if db is not None:
+                    logger.info("Closing database")
+                    db.close()
+                    db = None
+            except:
+                logger.exception("Error processing %s", line)
+            q.task_done()
+
+    def __makeDB(self, dbName:str) -> None:
+        sql = "CREATE TABLE IF NOT EXISTS glider ( -- Glider dialog information\n"
+        sql+= "    t TIMESTAMP WITH TIME ZONE, -- When line was received\n"
+        sql+= "    name TEXT, -- name of the field\n"
+        sql+= "    val FLOAT, -- value of the field\n"
+        sql+= "    PRIMARY KEY (t,name) -- Retain each t/name pair\n"
+        sql+= ");"
+        db = sqlite3.connect(dbName)
+        cur = db.cursor()
+        cur.execute(sql)
+        return db
+
+    def waitToFinish(self) -> None:
+        self.__queue.join()
+        self.__update.waitToFinish()
 
 if __name__ == "__main__":
     import argparse
     import MyLogger
+    import time
 
     parser = argparse.ArgumentParser()
     parser.add_argument("fn", nargs="+", metavar="dialog(s)", help="SFMC dialog file(s)")
+    parser.add_argument("--glider", type=str, required=True, help="Name of glider")
+    Dialog.addArgs(parser)
     MyLogger.addArgs(parser)
     args = parser.parse_args()
 
     logger = MyLogger.mkLogger(args)
+    dialog = Dialog(args, logger)
+    dialog.start()
 
     for fn in args.fn:
-        print("Working on", fn)
-        dialog = Dialog(logger)
-        with open(fn, "rb") as fp:
+        logger.info("Working on %s", fn)
+        with open(fn, "r") as fp:
             for line in fp:
-                dialog += line
-                if dialog.flagged():
-                    logger.info("line=%s", line)
-                    logger.info("Processing\n%s", dialog)
-        logger.info("DIALOG\n%s", dialog)
+                dialog.put(line)
+                time.sleep(0.001)
+
+    dialog.waitToFinish()
