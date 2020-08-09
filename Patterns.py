@@ -14,7 +14,7 @@ class Patterns(dict):
         dict.__init__(self)
         try:
             with open(fn, 'r') as fp:
-                data = yaml.load(fp)
+                data = yaml.safe_load(fp)
                 for glider in data:
                     print(glider, data[glider])
                     data[glider]["patterns"] = self.__toPattern(data[glider])
