@@ -15,7 +15,9 @@ import sqlite3
 import datetime
 import getpass
 import socket
+import subprocess
 from smtplib import SMTP
+from tempfile import NamedTemporaryFile
 import WayPoint
 from Patterns import Patterns
 from Drifter import Drifter
@@ -56,7 +58,8 @@ class API(threading.Thread):
             q.task_done()
 
     def __apiRun(self, js, *argv) -> bool:
-        cmd = [self.args.nodeCommand, js]
+        args = self.args
+        cmd = [args.nodeCommand, js]
         cmd.extend(argv)
         a = subprocess.run(cmd, cwd=args.apiDir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if (a.returncode == 0) and (len(a.stdout) == 0):
@@ -67,6 +70,7 @@ class API(threading.Thread):
 
     def __api(self, glider, goto:str) -> None:
         args = self.args
+        logger = self.logger
         if args.gotoAPI is None: return
         fn = None
         with NamedTemporaryFile(dir=args.gotoAPI, 
@@ -80,7 +84,7 @@ class API(threading.Thread):
         if not self.args.gotoRetain:
             os.unlink(fn)
         else:
-            self.logger.info("Temporary filename %s", fn)
+            logger.info("Temporary filename %s", fn)
 
 class MailTo(threading.Thread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
@@ -359,7 +363,7 @@ class Update(threading.Thread):
         self.__newPattern = False
         try:
             self.wpts = WayPoints(dd, glider, water, pattern, index=index) # Make waypoints
-            goto = self.wpts.goto()
+            goto = self.wpts.goto(now)
             return goto
         except:
             logger.exception("Unable to make waypoints\nDIALOG:\n%s\nDRIFTER:\n%s\n%s", 
