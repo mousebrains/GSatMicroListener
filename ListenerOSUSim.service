@@ -20,21 +20,22 @@ User=pat
 WorkingDirectory=/home/pat/logs
 #
 ExecStart=/home/pat/bin/Listener.py \
-	--logfile=OSUSim.log \
+	--logfile=osusim.log \
+	--mailTo=pat@mousebrains.com \
 	--drifterDB=GSatMicro.db \
+	--gliderDB=osusim.db \
 	--apiListen \
 	--apiDir=/home/pat/sfmc-rest-programs \
 	--apiCopy=osusim.api.txt \
 	--drifterNBack=10 \
 	--drifterTau=60 \
+	--pattern=patterns.yaml \
 	--gotoAPI=/tmp \
 	--gotoRetain \
 	--gotoDT=900 \
 	--gotoArchive=. \
 	--gotoIndex=1000 \
-	--pattern=patterns.yaml \
-	--mailTo=pat@mousebrains.com \
-	--mailTo=chondonn@oregonstate.edu \
+	--gotoMailTo=pat@mousebrains.com \
 	--glider=osusim
 
 RestartSec=10
