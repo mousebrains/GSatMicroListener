@@ -76,7 +76,7 @@ class Listener:
                 shell=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT) as p:
-            fp = None if args.apiCopy is None else open(args.apiCopy, "wb")
+            fp = None if args.apiCopy is None else open(args.apiCopy, "ab")
             buffer = ""
             while True:
                 line = p.stdout.readline()
