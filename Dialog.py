@@ -106,7 +106,7 @@ class Dialog(MyBaseThread):
     def put(self, line:str) -> None:
         self.__queue.put((datetime.datetime.now(tz=datetime.timezone.utc), line))
 
-    def __run(self) -> None: # Called on start
+    def runAndCatch(self) -> None: # Called on start
         args = self.args
         logger = self.logger
         q = self.__queue

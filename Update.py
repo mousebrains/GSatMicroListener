@@ -44,7 +44,7 @@ class API(MyBaseThread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def __run(self) -> None: # Called on start
+    def runAndCatch(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
@@ -103,7 +103,7 @@ class MailTo(MyBaseThread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def __run(self) -> None: # Called on start
+    def runAndCatch(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
@@ -153,7 +153,7 @@ class Archiver(MyBaseThread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def __run(self) -> None: # Called on start
+    def runAndCatch(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
@@ -192,7 +192,7 @@ class Filer(MyBaseThread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def __run(self) -> None: # Called on start
+    def runAndCatch(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
@@ -360,7 +360,7 @@ class Update(MyBaseThread):
         return None
 
 
-    def __run(self) -> None: # Called on start
+    def runAndCatch(self) -> None: # Called on start
         args = self.args
         logger = self.logger
         q = self.__queue

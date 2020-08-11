@@ -15,6 +15,6 @@ class MyBaseThread(Thread):
 
     def run(self): # Called on thread start
         try:
-            self.__run()
+            self.runAndCatch()
         except:
             self.logger.exception("Unexpected exception")

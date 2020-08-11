@@ -29,7 +29,7 @@ class Forwarder(MyBaseThread):
         addr = None
         self.q.put((t, addr, msg))
 
-    def __run(self) -> None: # Called on thread start
+    def runAndCatch(self) -> None: # Called on thread start
         hostname = self.hostname
         port = self.port
         logger = self.logger

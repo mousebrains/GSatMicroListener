@@ -107,7 +107,7 @@ class Writer(MyBaseThread):
         grp.add_argument("--mom", type=str, default="MOM", metavar='name',
                 help="Table name for Mobile Originated Messages")
 
-    def __run(self) -> None:
+    def runAndCatch(self) -> None:
         '''Called on thread start '''
         self.logger.debug("Creating tables")
         try:

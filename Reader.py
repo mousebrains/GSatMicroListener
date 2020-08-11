@@ -19,7 +19,7 @@ class Reader(MyBaseThreadThread):
         self.addr = addr
         self.q = q
 
-    def __run(self) -> None:
+    def runAndCatch(self) -> None:
         '''Called on thread start '''
         try:
             msg = b''

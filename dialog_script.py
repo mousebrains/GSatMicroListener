@@ -43,7 +43,7 @@ class Common(MyBaseThread):
         self.logger.info("Opened pipe for %s", " ".join(cmd))
         return self.pipe
 
-    def __run(self) -> None: # Called on start
+    def runAndCatch(self) -> None: # Called on start
         logger = self.logger
         logger.info("Starting")
         expr = re.compile(bytes(r"([{].+[}])\x00\n", "utf-8"))
