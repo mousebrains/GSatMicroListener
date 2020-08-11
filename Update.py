@@ -22,6 +22,7 @@ from Patterns import Patterns
 from Drifter import Drifter
 from WayPoints import WayPoints
 from MyBaseThread import MyBaseThread
+from geopy.distance import distance as geodesic
 
 class API(MyBaseThread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
