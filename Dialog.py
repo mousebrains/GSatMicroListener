@@ -8,11 +8,11 @@ import re
 import math
 import datetime
 import logging
-import threading
 import argparse
 import queue
 import sqlite3
 from Update import Update
+from MyBaseThread import MyBaseThread
 
 class MyPattern:
     def __init__(self, types:tuple, keys:tuple, expr:str) -> None:
@@ -84,12 +84,9 @@ patterns = [
         MyPattern("TRUE", "FLAG", r"s \*[.](sbd|tbd) \*[.](sbd|tbd)"),
         ] 
 
-class Dialog(threading.Thread):
+class Dialog(MyBaseThread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger):
-        threading.Thread.__init__(self, daemon=True)
-        self.name = "Dialog"
-        self.args = args
-        self.logger = logger
+        MyBaseThread.__init__(self, "Dialog", args, logger)
         self.__queue = queue.Queue()
         self.__update = Update(args, logger)
 
@@ -109,7 +106,7 @@ class Dialog(threading.Thread):
     def put(self, line:str) -> None:
         self.__queue.put((datetime.datetime.now(tz=datetime.timezone.utc), line))
 
-    def run(self) -> None: # Called on start
+    def __run(self) -> None: # Called on start
         args = self.args
         logger = self.logger
         q = self.__queue
@@ -124,9 +121,10 @@ class Dialog(threading.Thread):
         sql = "INSERT OR REPLACE INTO glider VALUES(?,?,?);"
 
         while True:
-            (t, line) = q.get(timeout=None if db is None else timeout)
             try:
+                (t, line) = q.get(timeout=None if db is None else timeout)
                 line = line.strip()
+                logger.debug("t=%s line=%s", t, line)
                 for pattern in patterns:
                     info = pattern.check(line, logger)
                     if info is None: continue
