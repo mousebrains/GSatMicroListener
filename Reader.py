@@ -5,23 +5,21 @@
 # Feb-2020, Pat Welch, pat@mousebrains.com
 
 from datetime import datetime, timezone
-import threading
 import socket
 import queue
 import argparse
 import logging
+from MyBaseThread import MyBaseThread
 
-class Reader(threading.Thread):
+class Reader(MyBaseThreadThread):
     ''' Read from a connection, parse it, and send to the output queue '''
     def __init__(self, conn, addr, logger:logging.Logger, q:list):
-        threading.Thread.__init__(self, daemon=True)
-        self.name = 'Reader({}:{})'.format(addr[0], addr[1])
+        MyBaseThread.__init__(self, "Reader({}:{})".format(addr[0], addr[1]), None, logger)
         self.conn = conn
         self.addr = addr
-        self.logger = logger
         self.q = q
 
-    def run(self) -> None:
+    def __run(self) -> None:
         '''Called on thread start '''
         try:
             msg = b''

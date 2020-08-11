@@ -3,20 +3,18 @@
 #
 # Feb-2020, Pat Welch, pat@mousebrains.com
 
-import threading
 import socket
 import queue
 import argparse
 import logging
+from MyBaseThread import MyBaseThread
 
-class Forwarder(threading.Thread):
+class Forwarder(MyBaseThread):
     ''' Wait on a queue and send the received packets to a host:port '''
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = "FWD"
+        MyBaseThreadThread.__init__(self, "FWD", args, logger)
         self.hostname = args.hostname
         self.port = args.portForward
-        self.logger = logger
         self.q = queue.Queue()
 
     @staticmethod
@@ -31,7 +29,7 @@ class Forwarder(threading.Thread):
         addr = None
         self.q.put((t, addr, msg))
 
-    def run(self) -> None: # Called on thread start
+    def __run(self) -> None: # Called on thread start
         hostname = self.hostname
         port = self.port
         logger = self.logger

@@ -7,7 +7,6 @@
 
 import os
 import os.path
-import threading
 import argparse
 import logging
 import queue
@@ -22,13 +21,11 @@ import WayPoint
 from Patterns import Patterns
 from Drifter import Drifter
 from WayPoints import WayPoints
+from MyBaseThread import MyBaseThread
 
-class API(threading.Thread):
+class API(MyBaseThread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = "API"
-        self.args = args
-        self.logger = logger
+        MyBaseThread.__init__(self, "API", args, logger)
         self.__queue = queue.Queue()
 
     @staticmethod
@@ -47,13 +44,14 @@ class API(threading.Thread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def run(self) -> None: # Called on start
+    def __run(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
 
         while True:
             (glider, goto) = q.get()
+            logger.debug("glider=%s goto\n%s", glider, goto)
             self.__api(glider, goto)
             q.task_done()
 
@@ -86,12 +84,9 @@ class API(threading.Thread):
         else:
             logger.info("Temporary filename %s", fn)
 
-class MailTo(threading.Thread):
+class MailTo(MyBaseThread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = "MailTo"
-        self.args = args
-        self.logger = logger
+        MyBaseThread.__init__(self, "MailTo", args, logger)
         self.__queue = queue.Queue()
 
     @staticmethod
@@ -108,13 +103,14 @@ class MailTo(threading.Thread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def run(self) -> None: # Called on start
+    def __run(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
 
         while True:
             (glider, goto) = q.get()
+            logger.debug("glider=%s goto\n%s", glider, goto)
             self.__mailTo(glider, goto)
             q.task_done()
 
@@ -140,12 +136,9 @@ class MailTo(threading.Thread):
             self.logger.exception("Error sending mail to %s from %s", 
                     ",".join(args.gotoMailTo), args.gotoMailFrom)
 
-class Archiver(threading.Thread):
+class Archiver(MyBaseThread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = "Archiver"
-        self.args = args
-        self.logger = logger
+        MyBaseThread.__init__(self, "Archiver", args, logger)
         self.__queue = queue.Queue()
 
     @staticmethod
@@ -160,13 +153,14 @@ class Archiver(threading.Thread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def run(self) -> None: # Called on start
+    def __run(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
 
         while True:
             (glider, goto) = q.get()
+            logger.debug("glider=%s goto\n%s", glider, goto)
             self.__archiver(glider, goto)
             q.task_done()
 
@@ -182,12 +176,9 @@ class Archiver(threading.Thread):
             fp.write(goto)
         self.logger.info("Archived to %s", fn)
 
-class Filer(threading.Thread):
+class Filer(MyBaseThread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = "Filer"
-        self.args = args
-        self.logger = logger
+        MyBaseThread.__init__(self, "Filer", args, logger)
         self.__queue = queue.Queue()
 
     @staticmethod
@@ -201,13 +192,14 @@ class Filer(threading.Thread):
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
 
-    def run(self) -> None: # Called on start
+    def __run(self) -> None: # Called on start
         logger = self.logger
         q = self.__queue
         logger.info("Starting")
 
         while True:
             (glider, goto) = q.get()
+            logger.debug("glider=%s goto\n%s", glider, goto)
             self.__filer(glider, goto)
             q.task_done()
 
@@ -217,12 +209,9 @@ class Filer(threading.Thread):
         with open(fn, "w") as fp:
             fp.write(goto)
 
-class Update(threading.Thread):
+class Update(MyBaseThread):
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = "Update"
-        self.args = args
-        self.logger = logger
+        MyBaseThread.__init__(self, "Update", args, logger)
         self.__queue = queue.Queue()
         self.__threads = [
                 API(args, logger),
@@ -371,7 +360,7 @@ class Update(threading.Thread):
         return None
 
 
-    def run(self) -> None: # Called on start
+    def __run(self) -> None: # Called on start
         args = self.args
         logger = self.logger
         q = self.__queue
@@ -384,6 +373,7 @@ class Update(threading.Thread):
 
         while True:
             (t, dbName) = q.get()
+            logger.debug("t=%s dbName\n%s", t, dbName)
             try:
                 info = self.__loadDB(dbName)
                 goto = self.__mkGoto(info)

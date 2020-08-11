@@ -3,13 +3,13 @@
 #
 # Feb-2020, Pat Welch, pat@mousebrains.com
 
-import threading
 import queue
 import argparse
 import logging
 import sqlite3
 from datetime import datetime
 from ParseMessage import Message
+from MyBaseThread import MyBaseThread
 
 class Raw:
     def __init__(self, tbl:str, logger:logging.Logger) -> None:
@@ -88,13 +88,11 @@ class MOM:
         sql+= " VALUES(" + ",".join(["?"] * len(names)) + ");"
         cur.execute(sql, vals)
 
-class Writer(threading.Thread):
+class Writer(MyBaseThread):
     ''' Wait on a queue, and write the item to a file '''
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = 'Writer'
+        MyBaseThread.__init__(self, "Writer", args, logger)
         self.dbName = args.db
-        self.logger = logger
         self.raw = Raw(args.raw, logger)
         self.mom = MOM(args.mom, logger)
         self.q = queue.Queue()
@@ -109,7 +107,7 @@ class Writer(threading.Thread):
         grp.add_argument("--mom", type=str, default="MOM", metavar='name',
                 help="Table name for Mobile Originated Messages")
 
-    def run(self) -> None:
+    def __run(self) -> None:
         '''Called on thread start '''
         self.logger.debug("Creating tables")
         try:

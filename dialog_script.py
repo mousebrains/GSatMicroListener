@@ -5,7 +5,6 @@
 # Aug-2020, Pat Welch, pat@mousebrains.com
 
 from argparse import ArgumentParser
-import threading
 import subprocess
 from logging import Logger
 import time
@@ -13,17 +12,16 @@ import re
 import json
 from queue import Queue
 import MyLogger
+from MyBaseThread import MyBaseThread
 
 nodeCommand = "/usr/bin/node"
 
-class Common(threading.Thread):
+class Common(MyBaseThread):
     def __init__(self, name:str, cmd:str, args:ArgumentParser, logger:Logger, q:Queue) -> None:
-        threading.Thread.__init__(self, daemon=True)
-        self.name = name
+        MyBaseThread.__init__(self, name, args, logger)
         self.cmd = cmd
         self.glider = args.glider
         self.apiDir = args.dir
-        self.logger = logger
         self.q = q
         self.pipe = None
 
@@ -45,7 +43,7 @@ class Common(threading.Thread):
         self.logger.info("Opened pipe for %s", " ".join(cmd))
         return self.pipe
 
-    def run(self) -> None: # Called on start
+    def __run(self) -> None: # Called on start
         logger = self.logger
         logger.info("Starting")
         expr = re.compile(bytes(r"([{].+[}])\x00\n", "utf-8"))
