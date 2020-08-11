@@ -732,7 +732,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
                 toState="T0VerDevice">
                 <action type="glider" command="Ctrl-W" />
             </transition>
-            <transition matchExpression="SCI:       house_elf_run" toState="T0VerDevice">
+            <transition matchExpression=" LOG FILE OPENED" toState="T0VerDevice">
                 <action type="glider" command="Ctrl-W" />
             </transition>
             <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
