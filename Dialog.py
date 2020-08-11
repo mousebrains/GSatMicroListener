@@ -136,6 +136,7 @@ class Dialog(MyBaseThread):
                     db.commit()
                     if "FLAG" in info: update.put(t, args.gliderDB)
                     break
+                q.task_done()
             except queue.Empty:
                 if db is not None:
                     logger.info("Closing database")
@@ -143,7 +144,7 @@ class Dialog(MyBaseThread):
                     db = None
             except:
                 logger.exception("Error processing %s", line)
-            q.task_done()
+                q.task_done()
 
     def __makeDB(self, dbName:str) -> None:
         sql = "CREATE TABLE IF NOT EXISTS glider ( -- Glider dialog information\n"
