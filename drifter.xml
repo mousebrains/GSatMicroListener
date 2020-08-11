@@ -273,6 +273,19 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             </transition>
             <!-- If the sent "s" command is seen, go wait for the zModem transfer to complete. -->
             <transition matchExpression="s \*.sbd \*.tbd" toState="T0SelectSendType" />
+            <!-- After reloadMA, the Iridium buffer can be full, so look for alternative -->
+            <transition matchExpression="Starting zModem transfer of" toState="T0WaitSciSend" />
+            <transition matchExpression="Total Bytes sent/received:" toState="T0WaitSciSend" />
+            <!-- If science IS going to transfer, handle science side transfer first -->
+            <transition matchExpression="SCIENCE DATA LOGGING: science IS running"
+                toState="T0WaitSciSend" />
+            <!-- If science is NOT going, skip right to handling glider side transfer, and
+                 don't issue dockszr -->
+            <transition matchExpression="SCIENCE DATA LOGGING: science is NOT running"
+                toState="T2WaitGldSend" />
+            <!-- If science data logging is not present at all, handle old type glider-only
+                 transfer, and don't issue dockszr -->
+            <transition matchExpression="Enumerating and selecting" toState="T3WaitOldSend" />
             <!-- If the glider connection is dropped, attempt to resend the command 
                  when the next surface dialog is seen.  -->
             <transition matchExpression="Connection Event: Carrier Detect lost."
@@ -652,7 +665,8 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDevice">
                 <action type="glider" command="Ctrl-W" />
             </transition>
-            <transition matchExpression="After data transmission, waiting for control-C to exit" toState="T0VerDevice">
+            <transition matchExpression="After data transmission, waiting for control-C to exit"
+                toState="T0VerDevice">
                 <action type="glider" command="Ctrl-W" />
             </transition>
             <transition matchExpression="SCI:       house_elf_run" toState="T0VerDevice">
