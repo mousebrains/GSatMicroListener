@@ -454,9 +454,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             </transition>
             <!-- If the zModem transfer was successful, go send the next command. -->
             <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
-                toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
+                toState="T4SndDockzr" />
             <!-- Look for trigger messages to reset the timer -->
             <transition
                 matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
@@ -493,18 +491,12 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
                 <action type="glider" command="s *.sbd *.tbd" />
             </transition>
             <!-- If the zModem transfer was successful, go send the next command. -->
-            <transition matchExpression="SUCCESS" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
+            <transition matchExpression="SUCCESS" toState="T4SndDockzr" />
             <!-- If there were no files to transfer, go send the next command. -->
-            <transition matchExpression="NO TRANSMISSION" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
+            <transition matchExpression="NO TRANSMISSION" toState="T4SndDockzr" />
             <!-- If the transfer explicitly failed, do not attempt to resend the command
                  (it may fail indefinately many times) and go send the next command. -->
-            <transition matchExpression="Error sending files" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
+            <transition matchExpression="Error sending files" toState="T4SndDockzr" />
             <!-- Look for trigger messages to reset the timer -->
             <transition
                 matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
@@ -534,9 +526,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <!-- If the command echo is seen, go wait for the zModem transfer to complete. -->
             <transition matchExpression="!szr" toState="T0WaitDockszr" />
             <!-- If no files were found, send the Control-W to get device information. -->
-            <transition matchExpression="not found" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
+            <transition matchExpression="not found" toState="T4SndDockzr" />
             <!-- If the glider connection is dropped,
                  attempt to resend the command when the next surface dialog is seen. -->
             <transition matchExpression="Connection Event: Carrier Detect lost."
@@ -566,14 +556,10 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
                 <action type="glider" command="!dockszr -archive *" />
             </transition>
             <!-- If the transfer was successful, get device information. -->
-            <transition matchExpression="Done!" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
+            <transition matchExpression="Done!" toState="T4SndDockzr" />
             <!-- If the transfer explicitly failed, assume it would repeatedly fail.
                  So do not resend and send the next command. -->
-            <transition matchExpression="FAILED: zr" toState="T4VerDockzr">
-                <action type="glider" command="!dockzr -archive *" />
-            </transition>
+            <transition matchExpression="FAILED: zr" toState="T4SndDockzr" />
             <!-- Look for trigger messages to reset the timer -->
             <transition
                 matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
@@ -581,6 +567,26 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
             <transition matchExpression="Connection Event: Carrier Detect lost."
                 toState="T0WaitDockszr" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state checks for the science proglet house elf beginning, then sends a dockzr command
+     -->
+    <state name="T4SndDockzr">
+        <transitions>
+            <!-- If a surface dialog is seen, send the "!dockzr" -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <transition matchExpression="SCI:PROGLET house_elf start" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <transition matchExpression="SCI:       house_elf_run" toState="T4VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
             <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
             <transition timeout="10" toState="T0WaitForSurfacing" />
         </transitions>
@@ -612,7 +618,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <transition matchExpression="Connection Event: Carrier Detect lost."
                 toState="T4VerDockzr" />
             <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
-            <transition timeout="10" toState="T1WaitForSurfacing" />
+            <transition timeout="10" toState="T0WaitForSurfacing" />
         </transitions>
     </state>
 
@@ -649,7 +655,7 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
             <transition matchExpression="Connection Event: Carrier Detect lost."
                 toState="T4WaitDockzr" />
             <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
-            <transition timeout="10" toState="T1WaitForSurfacing" />
+            <transition timeout="10" toState="T0WaitForSurfacing" />
         </transitions>
     </state>
 
