@@ -273,7 +273,7 @@ class Update(MyBaseThread):
         return self.__pattern
 
 
-    def __getIndex(self, dialog:dict) -> int:
+    def __getIndex(self, info:dict) -> int:
         if (self.wpts is None) or self.__newPattern:  
             return None # No previous waypoints or it is a new pattern
 
@@ -282,7 +282,10 @@ class Update(MyBaseThread):
         if (args.gotoIndex is None) or (args.gotoIndex <= 0):
             return None # Always go to closest waypoint
 
-        cLatLon = (dialog['latWpt'], dialog['lonWpt'])
+        if ('c_wpt_lat' not in info) or ('c_wpt_lon' not in info):
+            return None # current waypoint unknown
+
+        cLatLon = (info['c_wpt_lat'], info['c_wpt_lon'])
         minDistance = args.gotoIndex
         minIndex = None
         for (wpt, dt, index) in self.wpts:
