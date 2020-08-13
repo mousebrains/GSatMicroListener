@@ -1,0 +1,39 @@
+#
+# Generate a fake drifter stream of events
+#
+# sudo cp FauxDrifter.service /etc/systemd/system/
+#
+# sudo systemctl daemon-reload
+# sudo systemctl enable FauxDrifter
+# sudo systemctl start FauxDrifter
+#
+# Aug-2020, Pat Welch, pat@mousebrains.com
+
+[Unit]
+Description=Faux drifter for use in testing drifter follower
+
+[Service]
+# Type=simple # Default
+User=pat
+WorkingDirectory=/home/pat/logs
+#
+ExecStart=/home/pat/GSatMicroListener/fauxDrifter.py \
+	--logfile=fauxDrifter.log \
+	--mailTo=pat@mousebrains.com \
+	--dt=900 \
+	--lat=44.75 \
+	--lon=-124.75 \
+	--spd=0.05 \
+	--spdSigma=0.01 \
+	--hdg=300 \
+	--hdgSigma=10 \
+	--hostname=localhost \
+	--portForward=6565 \
+	--IMEI=15
+
+RestartSec=900
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
