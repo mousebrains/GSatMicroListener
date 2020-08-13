@@ -12,7 +12,7 @@ from MyBaseThread import MyBaseThread
 class Forwarder(MyBaseThread):
     ''' Wait on a queue and send the received packets to a host:port '''
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
-        MyBaseThreadThread.__init__(self, "FWD", args, logger)
+        MyBaseThread.__init__(self, "FWD", args, logger)
         self.hostname = args.hostname
         self.port = args.portForward
         self.q = queue.Queue()
