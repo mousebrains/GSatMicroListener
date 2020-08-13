@@ -19,13 +19,13 @@ from BitArray import BitArray
 class Header:
     def __init__(self, args:argparse.ArgumentParser, logger:logging.Logger) -> None:
         self.cdr = 0
-        self.imei = b'300234068117290'
+        self.imei = bytes("{:015d}".format(args.IMEI), "utf-8")
         self.momsn = 0
         self.mtmsn = 0
 
     @staticmethod
     def addArgs(parser:argparse.ArgumentParser) -> None:
-        pass
+        parser.add_argument("--IMEI", type=int, default=0, help="Beacon's IMEI number")
 
     def encode(self) -> bytes:
         self.cdr += 2
@@ -87,7 +87,7 @@ class Payload:
         self.hdgSigma = args.hdgSigma
         self.altitude = args.altitude
         self.battery = args.battery
-        self.batteryRate = args.batteryRate / 3600 # %/hour -> %/sec
+        self.batteryRate = args.batteryRate / 3600 / 24 # %/day -> %/sec
         self.t = None
         self.latPerDeg = distance((self.lat-0.5, self.lon), (self.lat+0.5, self.lon)).meters
         self.lonPerDeg = distance((self.lat, self.lon-0.5), (self.lat, self.lon+0.5)).meters
@@ -116,10 +116,11 @@ class Payload:
         grp.add_argument("--seed", type=int, metavar='int', help='Random seed')
 
     def __repr__(self) -> str:
-        msg = "t={}".format(datetime.fromtimestamp(self.t, tz=timezone.utc))
-        msg+= " lat={} lon={}".format(self.lat, self.lon)
-        msg+= " spd={} hdg={}".format(self.speed, self.heading)
-        msg+= " bat={}".format(self.battery)
+        # msg = "t={}".format(datetime.fromtimestamp(self.t, tz=timezone.utc))
+        msg = "t={}".format(datetime.fromtimestamp(self.t).replace(microsecond=0))
+        msg+= " lat={:.6f} lon={:.6f}".format(self.lat, self.lon)
+        msg+= " spd={:.4f} hdg={:.1f}".format(self.speed, self.heading)
+        msg+= " bat={:.1f}".format(self.battery)
         return msg
 
     def __move(self) -> None:
@@ -202,7 +203,7 @@ class FauxDrifter:
         msg += self.location.encode() # MO DirectIP Location
         msg += self.payload.encode() # MO DirectIP GPS Payload
         msg[1:3] = (len(msg) - 3).to_bytes(2, "big") # Fill in the length
-        self.logger.info("n=%s msg=%s", len(msg), bytes(msg))
+        self.logger.debug("n=%s msg=%s", len(msg), bytes(msg))
         return bytes(msg)
 
 if __name__ == "__main__":
