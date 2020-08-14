@@ -356,7 +356,7 @@ class Update(MyBaseThread):
         self.__newPattern = False
         try:
             self.wpts = WayPoints(dd, glider, water, pattern, index=index) # Make waypoints
-            goto = self.wpts.goto(now)
+            goto = self.wpts.goto(now, self.__IMEI)
             return goto
         except:
             logger.exception("Unable to make waypoints\nDIALOG:\n%s\nDRIFTER:\n%s\n%s", 
