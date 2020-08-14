@@ -1,0 +1,31 @@
+#
+# Generate a fake drifter stream of events
+#
+# sudo cp EventDialogOSUSim.service /etc/systemd/system/
+#
+# sudo systemctl daemon-reload
+# sudo systemctl enable EventDialogOSUSim
+# sudo systemctl start EventDialogOSUSim
+#
+# Aug-2020, Pat Welch, pat@mousebrains.com
+
+[Unit]
+Description=Log both a glider's dialog and XML events
+
+[Service]
+# Type=simple # Default
+User=pat
+WorkingDirectory=/home/pat/logs/osusim
+#
+ExecStart=/home/pat/GSatMicroListener/dialog_script.py \
+	--logfile=events.log \
+	--mailTo=pat@mousebrains.com \
+	--dir=/home/pat/sfmc-rest-programs/fmc1 \
+	--glider=osusim
+
+RestartSec=900
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
