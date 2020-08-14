@@ -1,0 +1,967 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+   2019-06-11 pat@mousebrains.com
+   This is nearly a ground up implentation based on prior work by
+   Mark Worden at TWR,
+   Stuart Pearce at Oregon State University/OOI, and
+   Anatoli Erofeev at Oregon State University
+
+   2020-08-08 pat@mousebrains.com
+              Using SFMC 8.5 and Glider firmware 8.4 work through many more details
+
+   2020-08-14 pat@mousebrains.com Only send MA files at the end to avoid two control-Fs/surfacing
+-->
+<!--
+   Basic Flow:
+     Reset to using primary phone number on the next call in
+     Receive files from glider and put in from-glider
+     Transfer files in to-science to the glider via dockszr
+     Request device info
+     Transfer files in to-glider to the glider via dockzr, then reload ma files if needed
+     Resume the mission
+
+   There is special handling in the case of a failure to reload the ma files.
+   On the next callin a control-F will be issued regardless of if new ma files are sent or not.
+
+   There is also special handling for no science logging is present, i.e. a pocket simulator
+
+   Works with Iridium, Freewave, or direct connected gliders
+
+   For use with SFMC dockserver version 8.x and up
+
+   State names are constructed like:
+      T0VerDockzr
+
+      where:
+        T0 indicates the thread, with T0 being the main thread,
+        T1 indicates ma files need to be reloaded,
+
+        Ver is the action being undertaken,
+          Ver->verify a command was received,
+          Snd->Send a command,
+          Wait->Wait for a command to finish
+
+        Dockzr is the related command,
+           Put, Dockzr, Dockszr, Send, DeviceInfo, Resume, ReloadMA, ...
+
+Note: This script has transitions based on loss of Carrier Detect.
+      It may not behave correctly with communications that do NOT support Carrier Detect.
+
+Note: I dropped Mark Worden's initial dockzr and dockszr on startup
+      since we do that pre-deployment or manually.
+-->
+<!--
+   This script has been tested on an SFMC 8.5 with:
+      A pocket simulator running 8.x
+      A shoebox simulator running 8.x
+      G3 deep gliders with 8.x
+      G2 shallow glider with 8.x
+-->
+
+<!-- This file is formated for 100 character wide displays -->
+
+<gliderScript>
+    <!-- The main state where we wait for a prompt to say the system is ready for a command
+         T0 -> We only need to reload MA files if new ones are downloaded -->
+    <initialState name="T0WaitForSurfacing">
+        <transitions>
+            <transition 
+                matchExpression="(Hit Control-R to RESUME|sensor:x_last_wpt_lon.*secs ago)" 
+                toState="T0VerSend">
+                <!-- on next call in use the primary number -->
+                <action type="glider" command="!put c_iridium_current_num 0" />
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+        </transitions>
+    </initialState> <!--T0WaitForSurfacing -->
+
+    <!--
+     The main state where we wait for a prompt to say the system is ready for a command
+     T1 -> We must reload MA files
+     -->
+    <state name="T1WaitForSurfacing">
+        <transitions>
+            <transition 
+                matchExpression="(Hit Control-R to RESUME|sensor:x_last_wpt_lon.*secs ago)" 
+                toState="T1VerSend">
+                <!-- on next call in use the primary number -->
+                <action type="glider" command="!put c_iridium_current_num 0" />
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+        </transitions>
+    </state> <!-- T1WaitForSurfacing -->
+
+    <!--
+        This state verifies that the "s" command was received by the glider.
+        rereading of MA files is not required
+    -->
+    <state name="T0VerSend">
+        <transitions>
+            <!-- When a surface dialog is seen, or the "s" command fails to verify,
+                 then attempt to resend the command. -->
+            <transition matchExpression="(Hit Control-R to RESUME|xxx command verify fail xxx)"
+                toState="T0VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the sent "s" command is seen, go wait for the zModem transfer to complete. -->
+            <transition matchExpression="s \*.sbd \*.tbd" toState="T0SelectSendType" />
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0VerSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state verifies that the "s" command was received by the glider.
+        rereading of MA files is required
+    -->
+    <state name="T1VerSend">
+        <transitions>
+            <!-- When a surface dialog is seen, or the "s" command fails to verify,
+                 then attempt to resend the command. -->
+            <transition matchExpression="(Hit Control-R to RESUME|xxx command verify fail xxx)"
+                toState="T1VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the sent "s" command is seen, go wait for the zModem transfer to complete. -->
+            <transition matchExpression="s \*.sbd \*.tbd" toState="T1SelectSendType" />
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1VerSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for the type of system we're talking to,
+            No science,
+            Science off, or
+            Science on
+        and chooses what to wait for based on that.
+        rereading of MA files is not required
+    -->
+    <state name="T0SelectSendType">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "send" command was missed by the glider
+                 or that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received. -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If science IS going to transfer, handle science side transfer first -->
+            <transition matchExpression="SCIENCE DATA LOGGING: science IS running"
+                toState="T0WaitSciSend" />
+            <!-- If science is NOT going, skip right to handling glider side transfer, and
+                 don't issue dockszr -->
+            <transition matchExpression="SCIENCE DATA LOGGING: science is NOT running"
+                toState="T2WaitGldSend" />
+            <!-- If science data logging is not present at all, handle old type glider-only
+                 transfer, and don't issue dockszr -->
+            <transition matchExpression="Enumerating and selecting" toState="T3WaitOldSend" />
+            <!-- If the glider connection is dropped, attempt to resend the command when
+                 the next surface dialog is seen. -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0SelectSendType" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for the type of system we're talking to,
+            No science,
+            Science off, or
+            Science on
+        and chooses what to wait for based on that.
+        rereading of MA files is required
+    -->
+    <state name="T1SelectSendType">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "send" command was missed by the glider
+                 or that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received. -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If science IS going to transfer, handle science side transfer first -->
+            <transition matchExpression="SCIENCE DATA LOGGING: science IS running"
+                toState="T1WaitSciSend" />
+            <!-- If science is NOT going, skip right to handling glider side transfer, and
+                 don't issue dockszr -->
+            <transition matchExpression="SCIENCE DATA LOGGING: science is NOT running"
+                toState="T3WaitGldSend" />
+            <!-- If science data logging is not present at all, handle old type glider-only
+                 transfer, and don't issue dockszr -->
+            <transition matchExpression="Enumerating and selecting" toState="T4WaitOldSend" />
+            <!-- If the glider connection is dropped, attempt to resend the command when
+                 the next surface dialog is seen. -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1SelectSendType" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        new type science side transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        rereading of MA files is not required
+    -->
+    <state name="T0WaitSciSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received. -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, nothing, or
+                 failed go send the next state. -->
+            <transition matchExpression="SCI: (SUCCESS|NO TRANSMSSION|Error sending files)"
+                toState="T0WaitGldSend" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T0WaitSciSend" />
+            <!-- Sometimes the SCI: line seems to be dropped -->
+            <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T0VerDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0WaitSciSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        new type science side transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        rereading of MA files is required
+    -->
+    <state name="T1WaitSciSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received. -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, nothing, or
+                 failed go send the next state. -->
+            <transition matchExpression="SCI: (SUCCESS|NO TRANSMSSION|Error sending files)"
+                toState="T1WaitGldSend" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T1WaitSciSend" />
+            <!-- Sometimes the SCI: line seems to be dropped -->
+            <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T1VerDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1WaitSciSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        new type glider side transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        rereading of MA files is not required
+    -->
+    <state name="T0WaitGldSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, nothing, or
+                 failed, go send the next command. -->
+            <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T0VerDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T0WaitGldSend" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0WaitGldSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        new type glider side transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        rereading of MA files is required
+    -->
+    <state name="T1WaitGldSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, nothing, or
+                 failed, go send the next command. -->
+            <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T1VerDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T1WaitGldSend" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1WaitGldSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        new type glider side transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        Since there is no science, skip sending dockszr and go straight sending any new MA files
+        rereading of MA files is not required
+     -->
+    <state name="T2WaitGldSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, go send the next command. -->
+            <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T0SndDevice" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T2WaitGldSend" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T2WaitGldSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        new type glider side transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        Since there is no science, skip sending dockszr and go straight sending any new MA files
+        rereading of MA files is required
+     -->
+    <state name="T3WaitGldSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1VerSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, go send the next command. -->
+            <transition matchExpression="GLD: (SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T1SndDevice" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T3WaitGldSend" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T3WaitGldSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        old type glider-only transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        Since there is no science, skip sending dockszr and go straight to
+        trying to send any new MA files
+        rereading of MA files is not required
+
+        N.B. This stanza has not been tested!!!!! It is ripped from Mark Worden's sfmc.xml
+             with the last four transitions added!
+    -->
+    <state name="T3WaitOldSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T3WaitOldSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, go send the next command.
+                 If the transfer explicitly failed, do not attempt to resend the command
+                 (it may fail indefinately many times) and go send the next command.  -->
+            <transition matchExpression="(SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T0SndDevice" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T3WaitOldSend" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T3WaitOldSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure for
+        old type glider-only transfer.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        Since there is no science, skip sending dockszr and go straight to
+        trying to send any new MA files
+        rereading of MA files is required
+
+        N.B. This stanza has not been tested!!!!! It is ripped from Mark Worden's sfmc.xml
+             with the last four transitions added!
+    -->
+    <state name="T4WaitOldSend">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "s" command was missed by the glider or
+                 that the glider connection dropped (possibly cancelling the transfer) and
+                 it called back - either on the next surfacing or the same surfacing.
+                 Resend the command and attempt to verify it was received.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T4WaitOldSend">
+                <action type="glider" command="s *.sbd *.tbd" />
+            </transition>
+            <!-- If the zModem transfer was successful, go send the next command.
+                 If the transfer explicitly failed, do not attempt to resend the command
+                 (it may fail indefinately many times) and go send the next command.  -->
+            <transition matchExpression="(SUCCESS|NO TRANSMISSION|Error sending files)"
+                toState="T1SndDevice" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T4WaitOldSend" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T4WaitOldSend" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state verifies that the "!dockszr" command was received by the glider.
+        rereading of MA files is not required
+     -->
+    <state name="T0VerDockszr">
+        <transitions>
+            <!-- If a surface dialog is seen, or the command fails to verify,
+                assume the glider is ready to receive a command and
+                send the "dockszr" command.  Go verify it was received. -->
+            <transition matchExpression="(Hit Control-R to RESUME|xxx command verify fail xxx)"
+                toState="T0VerDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- If the command echo is seen, go wait for the zModem transfer to complete. -->
+            <transition matchExpression="!szr" toState="T0WaitDockszr" />
+            <!-- If no files were found, send the Control-W to get device information. -->
+            <transition matchExpression="not found" toState="T0SndDevice" />
+            <!-- If the glider connection is dropped,
+                 attempt to resend the command when the next surface dialog is seen. -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0VerDockszr" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider has dove and will
+                 not reconnect to the dockserver until the next surfacing.
+                 To be ready for that next surfacing, go to the initial state of this script.  -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state verifies that the "!dockszr" command was received by the glider.
+        rereading of MA files is required
+     -->
+    <state name="T1VerDockszr">
+        <transitions>
+            <!-- If a surface dialog is seen, or the command fails to verify,
+                assume the glider is ready to receive a command and
+                send the "dockszr" command.  Go verify it was received. -->
+            <transition matchExpression="(Hit Control-R to RESUME|xxx command verify fail xxx)"
+                toState="T1VerDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- If the command echo is seen, go wait for the zModem transfer to complete. -->
+            <transition matchExpression="!szr" toState="T1WaitDockszr" />
+            <!-- If no files were found, send the Control-W to get device information. -->
+            <transition matchExpression="not found" toState="T1SndDevice" />
+            <!-- If the glider connection is dropped,
+                 attempt to resend the command when the next surface dialog is seen. -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1VerDockszr" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider has dove and will
+                 not reconnect to the dockserver until the next surfacing.
+                 To be ready for that next surfacing, go to the initial state of this script.  -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of science zModem transfer success or failure.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        rereading of MA files is not required
+     -->
+    <state name="T0WaitDockszr">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "!dockzr" command was missed by
+                 the glider or that the glider connection dropped
+                 (possibly cancelling the transfer) and it called back - either on
+                 the next surfacing or the same surfacing.  Resend the command. -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0WaitDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- If the transfer was successful, get device information. -->
+            <transition matchExpression="Done!" toState="T0SndDevice" />
+            <!-- If the transfer explicitly failed, assume it would repeatedly fail.
+                 So do not resend and send the next command. -->
+            <transition matchExpression="FAILED: zr" toState="T0SndDevice" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T0WaitDockszr" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0WaitDockszr" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of science zModem transfer success or failure.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for
+            "Total Bytes sent/received: " or
+            "Starting zModem transfer of"
+        messages which reset the timer.
+        rereading of MA files is required
+     -->
+    <state name="T1WaitDockszr">
+        <transitions>
+            <!-- If a surface dialog is seen, assume the "!dockzr" command was missed by
+                 the glider or that the glider connection dropped
+                 (possibly cancelling the transfer) and it called back - either on
+                 the next surfacing or the same surfacing.  Resend the command. -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1WaitDockszr">
+                <action type="glider" command="!dockszr -archive *" />
+            </transition>
+            <!-- If the transfer was successful, get device information. -->
+            <transition matchExpression="Done!" toState="T1SndDevice" />
+            <!-- If the transfer explicitly failed, assume it would repeatedly fail.
+                 So do not resend and send the next command. -->
+            <transition matchExpression="FAILED: zr" toState="T1SndDevice" />
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T1WaitDockszr" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1WaitDockszr" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state waits for the science house elf to run or waiting for control-C to send a Ctrl-W
+        rereading of MA files is not required
+    -->
+    <state name="T0SndDevice">
+        <transitions>
+            <!-- Look for hosue_elf_run or Control-R to RESUME -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDevice">
+                <action type="glider" command="Ctrl-W" />
+            </transition>
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+                 start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state waits for the science house elf to run or waiting for control-C to send a Ctrl-W
+        rereading of MA files is required
+    -->
+    <state name="T1SndDevice">
+        <transitions>
+            <!-- Look for hosue_elf_run or Control-R to RESUME -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1VerDevice">
+                <action type="glider" command="Ctrl-W" />
+            </transition>
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+                 start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state waits to see the control-W was accepted
+        rereading of MA files is not required
+     -->
+    <state name="T0VerDevice">
+        <transitions>
+            <!-- If a surface dialog is seen after sending the Ctrl-W but
+                 before an indication of its success, assume the command was missed by the glider.
+                 Resend it and wait for success or failure.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDevice">
+                <action type="glider" command="Ctrl-W" />
+            </transition>
+            <transition matchExpression="name in ALLCAPS means CRITICAL device"
+                toState="T0WaitDevice" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0VerDevice" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+                 start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state waits to see the control-W was accepted
+        rereading of MA files is required
+     -->
+    <state name="T1VerDevice">
+        <transitions>
+            <!-- If a surface dialog is seen after sending the Ctrl-W but
+                 before an indication of its success, assume the command was missed by the glider.
+                 Resend it and wait for success or failure.  -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1VerDevice">
+                <action type="glider" command="Ctrl-W" />
+            </transition>
+            <transition matchExpression="name in ALLCAPS means CRITICAL device"
+                toState="T1WaitDevice" />
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1VerDevice" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+                 start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state waits to see the devices list print out and then submits a Ctrl-R to resume.
+        rereading of MA files is not required
+    -->
+    <state name="T0WaitDevice">
+        <transitions>
+            <!-- If the divices: is missed resume the mission -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- If devices list is seen, assume the glider is ready to receive a command and send
+            the Ctrl-R. -->
+            <transition matchExpression="devices:" toState="T0VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0WaitDevice" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+            start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state waits to see the devices list print out and then submits a Ctrl-R to resume.
+        rereading of MA files is required
+    -->
+    <state name="T1WaitDevice">
+        <transitions>
+            <!-- If the divices: is missed resume the mission -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- If devices list is seen, assume the glider is ready to receive a command and send
+            the Ctrl-R. -->
+            <transition matchExpression="devices:" toState="T1VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- If the carrier drops, reset timer and resend command when Control-R seen -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1WaitDevice" />
+            <!-- If no surface dialog is seen for 10 minutes, assume the glider dove and go to the
+            start of the script in preparation for the next surfacing. -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state verifies that the "!dockzr" command was received by the glider.
+        rereading of MA files is not required
+     -->
+    <state name="T0VerDockzr">
+        <transitions>
+             <!-- If a surface dialog is seen, assume the "!dockzr" command was missed by
+                  the glider or that the glider connection dropped
+                  (possibly cancelling the transfer) and it called back - either on
+                  the next surfacing or the same surfacing.
+                  Resend the command.
+                  Or if the "!dockzr" command fails to verify then attempt to resend the command.
+             -->
+            <transition matchExpression="(Hit Control-R to RESUME|xxx command verify fail xxx)"
+                toState="T0VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- If the command echo is seen, go wait for the zModem transfer to complete. -->
+            <transition matchExpression="!zr" toState="T0WaitDockzr" />
+            <!-- If no files to send, get device information -->
+            <transition matchExpression="not found" toState="T0WaitForDisconnect">
+                <action type="glider" command="Ctrl-R" />
+            </transition>
+            <!-- If the glider connection is dropped, then go back and wait for a new connection -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0VerDockzr" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state verifies that the "!dockzr" command was received by the glider.
+        rereading of MA files is required
+     -->
+    <state name="T1VerDockzr">
+        <transitions>
+             <!-- If a surface dialog is seen, assume the "!dockzr" command was missed by
+                  the glider or that the glider connection dropped
+                  (possibly cancelling the transfer) and it called back - either on
+                  the next surfacing or the same surfacing.
+                  Resend the command.
+                  Or if the "!dockzr" command fails to verify then attempt to resend the command.
+             -->
+            <transition matchExpression="(Hit Control-R to RESUME|xxx command verify fail xxx)"
+                toState="T1VerDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- If the command echo is seen, go wait for the zModem transfer to complete. -->
+            <transition matchExpression="!zr" toState="T1WaitDockzr" />
+            <!-- If no files to send, reread MA files is required -->
+            <transition matchExpression="not found" toState="T0VerReloadMA">
+                <action type="glider" command="Ctrl-F" />
+            </transition>
+            <!-- If the glider connection is dropped, then go back and wait for a new connection -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1VerDockzr" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for "Total Bytes sent/received: " or
+        "Starting zModem transfer of" messages which reset the timer.
+        rereading of MA files is not required
+     -->
+    <state name="T0WaitDockzr">
+        <transitions>
+             <!-- If a surface dialog is seen, assume the "!dockzr" command was missed by
+              the glider or that the glider connection dropped
+              (possibly cancelling the transfer) and it called back - either on
+              the next surfacing or the same surfacing.
+              Resend the command -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0WaitDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T0WaitDockzr" />
+            <!-- If the transfer was successful, send the reload ma command. -->
+            <transition matchExpression="Done!" toState="T0VerReloadMA">
+                <action type="glider" command="Ctrl-F" />
+            </transition>
+            <!-- If the transfer explicitly failed, assume it would repeatedly fail.
+                 So do not resend and send the next command. -->
+            <transition matchExpression="FAILED: zr" toState="T0WaitForDisconnect">
+                <action type="glider" command="Ctrl-R" />
+            </transition>
+            <!-- If the carrier drops, cycle around and wait for it to come back or
+                timeout in this state -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0WaitDockzr" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state looks for indications of zModem transfer success or failure.
+        A simple timeout here is dangerous since an upload can take a long time.
+        To mitigate the timeout issue we look for "Total Bytes sent/received: " or
+        "Starting zModem transfer of" messages which reset the timer.
+        rereading of MA files is required
+     -->
+    <state name="T1WaitDockzr">
+        <transitions>
+             <!-- If a surface dialog is seen, assume the "!dockzr" command was missed by
+              the glider or that the glider connection dropped
+              (possibly cancelling the transfer) and it called back - either on
+              the next surfacing or the same surfacing.
+              Resend the command -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T1WaitDockzr">
+                <action type="glider" command="!dockzr -archive *" />
+            </transition>
+            <!-- Look for trigger messages to reset the timer -->
+            <transition
+                matchExpression="(Total Bytes sent/received:\s+\d+|Starting zModem transfer of)"
+                toState="T1WaitDockzr" />
+            <!-- If the transfer was successful, send the reload ma command. -->
+            <transition matchExpression="Done!" toState="T0VerReloadMA">
+                <action type="glider" command="Ctrl-F" />
+            </transition>
+            <!-- If the transfer explicitly failed, assume it would repeatedly fail.
+                 So do not resend and send the next command. -->
+            <transition matchExpression="FAILED: zr" toState="T0VerReloadMA">
+                <action type="glider" command="Ctrl-F" />
+            </transition>
+            <!-- If the carrier drops, cycle around and wait for it to come back or
+                timeout in this state -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T1WaitDockzr" />
+            <!-- If nothing within 10 minutes, then go back and wait for a new connection -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+     This state looks for indications of Ctrl-F success or failure.
+     -->
+    <state name="T0VerReloadMA">
+        <transitions>
+            <!-- If the Ctrl-F command failed to verify -
+                 i.e., the dockserver did not see an echo of
+                 the command within ~20 sec of sending it, then attempt to resend it.
+             -->
+            <transition matchExpression="xxx command verify fail xxx" toState="T0VerReloadMA">
+                <action type="glider" command="Ctrl-F" />
+            </transition>
+            <!-- If a surface dialog is seen after sending the Ctrl-F but
+                 before an indication of its success, assume the command was missed by the glider.
+                 Resend it and wait for success or failure. -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T0VerReloadMA">
+                <action type="glider" command="Ctrl-F" />
+            </transition>
+            <!-- Once the Ctrl-F is confirmed, get device information -->
+            <transition matchExpression="MAFILES will be re-read" toState="T0WaitForDisconnect">
+                <action type="glider" command="Ctrl-R" />
+            </transition>
+            <!-- If the carrier drops, then cycle back in this state restarting the timer -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0VerReloadMA" />
+            <!-- If no indication of success or failure is seen within 10 minutes,
+                 assume the glider dove.  Go to the script's first state in preparation
+                 for the next surfacing. We will send another control-F -->
+            <transition timeout="10" toState="T1WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <!--
+        This state waits for the glider to disconnect and then goes to the script's first state
+        in preparation for the glider's next surfacing.
+        The text "Connection Event: Carrier Detect lost." is always the last text seen when a
+        glider disconnects. Since this state matches that text before going to the script's first
+        state, the glider's console output as seen by the script is cleared before looping back
+        to the first state. This helps prevent some spurious glider output to cause a premature
+        zModem transfer - premature in the sense that the glider has not yet dovei and
+        later resurfaced.
+    -->
+    <state name="T0WaitForDisconnect">
+        <transitions>
+            <!-- To help keep the script in sync with the glider's dialog,
+                 wait until the glider hangs up before looping back to the start of this script.
+                 Helps insure that any spurious glider dialog that is received before the glider
+                 hangs up does not cause a premature transition out of this script's start state.
+            -->
+            <transition matchExpression="Connection Event: Carrier Detect lost."
+                toState="T0WaitForSurfacing" />
+            <!-- This should trigger for direct connections to a simulator or Freewave -->
+            <transition matchExpression="end_gps_input" toState="T0WaitForSurfacing" />
+            <!-- For direct connections, timeout after 5 minutes -->
+            <transition timeout="5" toState="T0WaitForSurfacing" />
+        </transitions>
+    </state>
+
+    <finalState name="final">
+    </finalState>
+</gliderScript>
+
