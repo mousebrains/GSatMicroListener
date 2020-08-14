@@ -99,7 +99,7 @@ class WayPoints(list):
         msg.append("#")
         msg.append("# PATTERNS index={}:".format(self.index))
         for index in range(len(self.patterns)):
-            msg.append("#   i={:.1f} {:.1f}".format(index, self.patterns[index]))
+            msg.append("#   i={:.1f} {}".format(index, self.patterns[index]))
         msg.append("#")
         msg.append("")
         msg.append("<start:b_arg>")
