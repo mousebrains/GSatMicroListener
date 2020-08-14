@@ -83,18 +83,24 @@ class WayPoints(list):
                 "#       theta: {:.1f} degrees true".format(w.v.theta()),
                 ]
 
-    def goto(self, t0:datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)) -> str:
+    def goto(self, t0:datetime.datetime, IMEI:str) -> str:
         msg = []
         msg.append("behavior_name=goto_list")
         msg.append("# Drifter follower")
         msg.append("# Generated: " + str(t0.replace(microsecond=0)))
+        msg.append("#")
+        msg.append("# IMEI: " + IMEI)
+        msg.append("#")
         msg.extend(self.__printDrifter(self.drifter))
+        msg.append("#")
         msg.extend(self.__printGlider(self.glider))
+        msg.append("#")
         msg.extend(self.__printWater(self.water))
-        msg.append("# PATTERNS:")
+        msg.append("#")
+        msg.append("# PATTERNS index={}:".format(self.index))
         for index in range(len(self.patterns)):
-            msg.append("#   i={} {}".format(index, self.patterns[index]))
-        msg.append("# index=" + str(self.index))
+            msg.append("#   i={:.1f} {:.1f}".format(index, self.patterns[index]))
+        msg.append("#")
         msg.append("")
         msg.append("<start:b_arg>")
         msg.append("b_arg: num_legs_to_run(nodim) -1")
@@ -112,7 +118,8 @@ class WayPoints(list):
             prevLatLon = wpt.wpt
             t = (t0 + datetime.timedelta(seconds=dt)).replace(microsecond=0)
             dt = datetime.timedelta(seconds=math.floor(wpt.dt))
-            msg.append("{} {} # i={}, dist={:.0f}m, dt={}, {}".format(lon, lat, index, dist, dt, t))
+            msg.append("{:6f} {:6f} # i={}, dist={:.0f}m, dt={}, {}".format(
+                lon, lat, index, dist, dt, t))
         msg.append("<end:waypoints>")
         return "\n".join(msg)
 
