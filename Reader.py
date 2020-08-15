@@ -11,7 +11,7 @@ import argparse
 import logging
 from MyBaseThread import MyBaseThread
 
-class Reader(MyBaseThreadThread):
+class Reader(MyBaseThread):
     ''' Read from a connection, parse it, and send to the output queue '''
     def __init__(self, conn, addr, logger:logging.Logger, q:list):
         MyBaseThread.__init__(self, "Reader({}:{})".format(addr[0], addr[1]), None, logger)
