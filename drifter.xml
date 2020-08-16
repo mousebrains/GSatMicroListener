@@ -767,6 +767,10 @@ Note: I dropped Mark Worden's initial dockzr and dockszr on startup
     -->
     <state name="T0WaitForDisconnect">
         <transitions>
+            <!-- In case the control-R was missed -->
+            <transition matchExpression="Hit Control-R to RESUME" toState="T4VerReloadMA">
+                <action type="glider" command="Ctrl-R" />
+            </transition>
             <!-- To help keep the script in sync with the glider's dialog,
                  wait until the glider hangs up before looping back to the start of this script.
                  Helps insure that any spurious glider dialog that is received before the glider
