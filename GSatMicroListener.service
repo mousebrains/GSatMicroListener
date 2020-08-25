@@ -20,9 +20,10 @@ WorkingDirectory=/home/pat/logs
 ExecStart=/home/pat/bin/GSatMicroListener.py \
 	--logfile=GSatMicroListener.log \
 	--port=6565 \
-	--hostname=gliderfmc0.ceoas.oregonstate.edu \
-	--portForward=11113 \
 	--db=GSatMicro.db
+
+	# --hostname=gliderfmc0.ceoas.oregonstate.edu \
+	# --portForward=11113 \
 	
 RestartSec=120
 Restart=always
