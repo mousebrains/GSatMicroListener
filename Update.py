@@ -15,6 +15,7 @@ import datetime
 import getpass
 import socket
 import subprocess
+import math
 from smtplib import SMTP
 from tempfile import NamedTemporaryFile
 import WayPoint
@@ -39,8 +40,8 @@ class API(MyBaseThread):
         grp.add_argument("--nodeCommand", type=str, metavar="filename", default="/usr/bin/node",
                 help="Full path to node command")
 
-    def put(self, glider:str, goto:str) -> None:
-        self.__queue.put((glider, goto))
+    def put(self, glider:str, goto:str, maxDist:float) -> None:
+        self.__queue.put((glider, goto, maxDist))
 
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
@@ -51,9 +52,10 @@ class API(MyBaseThread):
         logger.info("Starting")
 
         while True:
-            (glider, goto) = q.get()
-            logger.debug("glider=%s goto\n%s", glider, goto)
-            self.__api(glider, goto)
+            (glider, goto, maxDist) = q.get()
+            if goto is not None:
+                logger.debug("glider=%s goto\n%s", glider, goto)
+                self.__api(glider, goto)
             q.task_done()
 
     def __apiRun(self, js, *argv) -> bool:
@@ -98,8 +100,8 @@ class MailTo(MyBaseThread):
         grp.add_argument("--gotoMailFrom", type=str, metavar="foo@bar.com",
                 help="Who the email is coming from")
 
-    def put(self, glider:str, goto:str) -> None:
-        self.__queue.put((glider, goto))
+    def put(self, glider:str, goto:str, maxDist:float) -> None:
+        self.__queue.put((glider, goto, maxDist))
 
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
@@ -110,22 +112,32 @@ class MailTo(MyBaseThread):
         logger.info("Starting")
 
         while True:
-            (glider, goto) = q.get()
-            logger.debug("glider=%s goto\n%s", glider, goto)
-            self.__mailTo(glider, goto)
+            (glider, goto, maxDist) = q.get()
+            if goto is None:
+                if maxDist is None:
+                    goto = "Both goto and maxDist are None, probably no valid solution"
+                    subject = "{} has both goto and maxDist are Nones"
+                else:
+                    goto = "{} does not need a new goto file\n".format(glider)
+                    goto+= "Maximum distance from old to new waypoints was {}m".format(maxDist)
+                    subject = "{} does not need a new goto".format(glider)
+            else:
+                subject = "Goto file for {}".format(glider)
+
+            self.__mailTo(goto, subject)
             q.task_done()
 
-    def __mailTo(self, glider:str, goto:str) -> None:
+    def __mailTo(self, goto:str, subject:str) -> None:
         args = self.args
         if args.gotoMailTo is None: return
         try:
             if args.gotoMailFrom is None:
                 args.gotoMailFrom = getpass.getuser() + "@" + socket.getfqdn()
-                self.logger.info("mailFrom=%s", args.gotoMailFrom)
+                self.logger.debug("mailFrom=%s", args.gotoMailFrom)
             msg = []
             msg.append("From: " + args.gotoMailFrom)
             msg.append("To: " + ",".join(args.gotoMailTo))
-            msg.append("Subject: Goto file for " + glider)
+            msg.append("Subject: " + subject)
             msg.append("")
             msg = "\r\n".join(msg)
             msg += goto
@@ -148,8 +160,8 @@ class Archiver(MyBaseThread):
         grp.add_argument("--gotoArchive", type=str, metavar="dir",
                 help="Archive a copy of the generated goto file")
 
-    def put(self, glider:str, goto:str) -> None:
-        self.__queue.put((glider, goto))
+    def put(self, glider:str, goto:str, maxDist:float) -> None:
+        self.__queue.put((glider, goto, maxDist))
 
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
@@ -160,9 +172,10 @@ class Archiver(MyBaseThread):
         logger.info("Starting")
 
         while True:
-            (glider, goto) = q.get()
-            logger.debug("glider=%s goto\n%s", glider, goto)
-            self.__archiver(glider, goto)
+            (glider, goto, maxDist) = q.get()
+            if goto is not None:
+                logger.debug("glider=%s goto\n%s", glider, goto)
+                self.__archiver(glider, goto)
             q.task_done()
 
     def __archiver(self, glider:str, goto:str) -> None:
@@ -187,8 +200,8 @@ class Filer(MyBaseThread):
         grp = parser.add_argument_group(description="Make Goto File Options")
         grp.add_argument("--gotoFile", type=str, metavar="filename", help="Write a goto filename")
 
-    def put(self, glider:str, goto:str) -> None:
-        self.__queue.put((glider, goto))
+    def put(self, glider:str, goto:str, maxDist:float) -> None:
+        self.__queue.put((glider, goto, maxDist))
 
     def waitToFinish(self) -> None:
         self.__queue.join() # Don't return until all messages are processed
@@ -199,9 +212,10 @@ class Filer(MyBaseThread):
         logger.info("Starting")
 
         while True:
-            (glider, goto) = q.get()
-            logger.debug("glider=%s goto\n%s", glider, goto)
-            self.__filer(glider, goto)
+            (glider, goto, maxDist) = q.get()
+            if goto is not None:
+                logger.debug("glider=%s goto\n%s", glider, goto)
+                self.__filer(glider, goto)
             q.task_done()
 
     def __filer(self, glider:str, goto:str) -> None:
@@ -239,6 +253,7 @@ class Update(MyBaseThread):
         MailTo.addArgs(parser)
         Archiver.addArgs(parser)
         Filer.addArgs(parser)
+        WayPoints.addArgs(parser)
         grp = parser.add_argument_group(description="Make Goto Options")
         grp.add_argument("--gotoDT", type=float, default=900, metavar="seconds",
                 help="How long will the glider spend on the surface")
@@ -246,6 +261,8 @@ class Update(MyBaseThread):
                 help="How close to consider commanded and previous waypoints matching")
         grp.add_argument("--pattern", type=str, required=True, metavar="filename",
                 help="YAML file of patterns")
+        grp.add_argument("--gotoTau", type = float, default=4*3600, metavar="seconds",
+                help="1/e weighting for speed weight in time")
 
     def waitToFinish(self) -> None:
         self.__queue.join()
@@ -265,10 +282,11 @@ class Update(MyBaseThread):
         if (self.__pattern is None) or (t > self.__patternTime):
             a = Patterns(fn)
             self.__patternTime = t
-            if glider not in a:
+            if not a.qGlider(glider):
                 raise Exception("Glider, " + glider + ", not in patterns, " + fn)
-            self.__pattern = a[glider]['patterns']
-            self.__IMEI = a[glider]['IMEI']
+            self.__patternEnabled = a.qEnabled(glider)
+            self.__pattern = a.pattern(glider)
+            self.__IMEI = a.IMEI(glider)
             self.__newPattern = True
 
         return self.__pattern
@@ -317,6 +335,35 @@ class Update(MyBaseThread):
                 except:
                     pass
             info[key] = val
+
+        # Special handling to m_avg_speed where we do a longer term average
+        sql = "SELECT strftime('%s',t) as t,val FROM glider"
+        sql+= " WHERE name='m_avg_speed'"
+        sql+= " ORDER BY t DESC"
+        sql+= " LIMIT 20;"
+        cur.execute(sql)
+        times = []
+        speeds = []
+        for (t, spd) in cur:
+            times.append(float(t))
+            speeds.append(float(spd))
+
+        tMax = max(times)
+        tau = self.args.gotoTau
+        denom = 0
+        numer = 0
+        for i in range(len(times)):
+            t = times[i]
+            spd = speeds[i]
+            wght = math.exp((t - tMax) / tau)
+            denom += wght
+            numer += spd * wght
+
+        if denom != 0:
+            spd = numer / denom
+            self.logger.info("m_avg_speed %s -> %s n=%s", info['m_avg_speed'], spd, len(times))
+            info['m_avg_speed'] = spd
+
         return info
 
     @staticmethod
@@ -334,11 +381,10 @@ class Update(MyBaseThread):
 
 
 
-    def __mkGoto(self, info:dict) -> str:
+    def __mkGoto(self, info:dict) -> tuple:
         args = self.args
         logger = self.logger
-        pattern = self.__getPattern(args.glider) # Update the patterns if needed
-        args.IMEI = self.__IMEI # Which drifter beacon to fetch
+        pattern = self.__pattern # Patterns to use
         drifter = Drifter(args, logger) # Get drifter information
         glider = self.__mkGlider(info) # Where the glider is
         water = self.__mkWater(info) # The currents
@@ -355,13 +401,14 @@ class Update(MyBaseThread):
         index = self.__getIndex(info)
         self.__newPattern = False
         try:
-            self.wpts = WayPoints(dd, glider, water, pattern, index=index) # Make waypoints
-            goto = self.wpts.goto(now, self.__IMEI)
-            return goto
+            self.wpts = WayPoints(dd, glider, water, pattern, args, logger, 
+                    index=index) # Make waypoints
+            (goto, maxDist) = self.wpts.goto(now, self.__IMEI)
+            return (goto, maxDist)
         except:
             logger.exception("Unable to make waypoints\nDIALOG:\n%s\nDRIFTER:\n%s\n%s", 
                     info, d, pattern)
-        return None
+        return (None, None)
 
 
     def runAndCatch(self) -> None: # Called on start
@@ -369,23 +416,29 @@ class Update(MyBaseThread):
         logger = self.logger
         q = self.__queue
         threads = self.__threads
+        for thr in threads: # Start my threads
+            thr.start()
 
         logger.info("Starting")
-
-        for thr in threads:
-            thr.start()
 
         while True:
             (t, dbName) = q.get()
             logger.debug("t=%s dbName\n%s", t, dbName)
             try:
-                info = self.__loadDB(dbName)
-                goto = self.__mkGoto(info)
-                for thr in threads:
-                    thr.put(args.glider, goto)
-
+                pattern = self.__getPattern(args.glider) # Update the patterns if needed
+                args.IMEI = self.__IMEI # Which drifter beacon to fetch
             except:
-                logger.exception("Exception while updating")
+                logger.exception("Error getting patterns for %s", args.glider)
+                q.task_done()
+                continue
+            if self.__patternEnabled:
+                try:
+                    info = self.__loadDB(dbName)
+                    (goto, maxDist) = self.__mkGoto(info)
+                    for thr in threads:
+                        thr.put(args.glider, goto, maxDist)
+                except:
+                    logger.exception("Exception while updating")
             q.task_done()
 
 if __name__ == "__main__":
