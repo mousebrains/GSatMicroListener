@@ -58,6 +58,25 @@ class Patterns(dict):
             items.append(Pattern(pattern[0], pattern[1], qRotate))
         return items
 
+    def qGlider(self, glider:str) -> bool:
+        return glider in self
+
+    def qEnabled(self, glider:str) -> bool:
+        if glider not in self: return False
+        if "enabled" not in self[glider]: return True
+        return self[glider]["enabled"]
+
+    def pattern(self, glider:str) -> list:
+        if glider not in self: return []
+        if "patterns" not in self[glider]: return []
+        return self[glider]["patterns"]
+
+    def IMEI(self, glider:str) -> str:
+        if glider not in self: return None
+        if "IMEI" not in self[glider]: return None
+        return self[glider]["IMEI"]
+
+
 if __name__ == "__main__":
     import argparse
 
