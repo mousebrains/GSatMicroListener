@@ -114,7 +114,7 @@ class Dialog(MyBaseThread):
 
         logger.info("Starting")
 
-        update.start()
+        update.start() # Start the update thread
 
         db = None
         timeout = 300 # Close database if no communications for this long
