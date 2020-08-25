@@ -1,0 +1,39 @@
+#
+# Generate a fake drifter stream of events
+# 
+# This service handles multiple gliders
+# 
+# To start a particular glider use a service name like 
+#
+# EventDialog@osu551
+#
+# for systemctl start/stop/status
+#
+# sudo cp EventDialog@.service /etc/systemd/system/
+#
+# sudo systemctl daemon-reload
+# sudo systemctl enable EventDialog@
+# sudo systemctl start EventDialog@
+#
+# Aug-2020, Pat Welch, pat@mousebrains.com
+
+[Unit]
+Description=Log both a glider's dialog and XML events
+
+[Service]
+# Type=simple # Default
+User=pat
+WorkingDirectory=/home/pat/logs/%i
+#
+ExecStart=/home/pat/GSatMicroListener/dialog_script.py \
+	--logfile=events.log \
+	--mailTo=pat@mousebrains.com \
+	--dir=/home/pat/sfmc-rest-programs/fmc0 \
+	--glider=%i
+
+RestartSec=60
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
