@@ -235,12 +235,31 @@ class WayPoint:
         c = d0.dot(d0) # |X0-Y0|^2
 
         if a == 0:
-            raise Exception("No valid solution, water+drifter speed equals glider speed")
+            msg = ["No valid solution, water+drifter speed equals glider speed"]
+            msg.append("tgt0 {}".format(self.target0))
+            msg.append("gld0 {}".format(self.glider0))
+            msg.append("d0 {}".format(d0))
+            msg.append("drifter.v {}".format(self.drifter.v))
+            msg.append("water.v {}".format(self.water.v))
+            msg.append("dv {}".format(dv))
+            msg.append("glider speed {} ^2 {}".format( self.glider.speed, spd2))
+            msg.append("a {} b {} c {}".format(a, b, c))
+            raise Exception("\n".join(msg))
 
         term = b * b - 4 * a * c
 
         if term < 0:
-            raise Exception("No valid solution, square root term is negative")
+            msg = ["No valid solution, square root term is negative"]
+            msg.append("tgt0 {}".format(self.target0))
+            msg.append("gld0 {}".format(self.glider0))
+            msg.append("d0 {}".format(d0))
+            msg.append("drifter.v {}".format(self.drifter.v))
+            msg.append("water.v {}".format(self.water.v))
+            msg.append("dv {}".format(dv))
+            msg.append("glider speed {} ^2 {}".format( self.glider.speed, spd2))
+            msg.append("a {} b {} c {}".format(a, b, c))
+            msg.append("term {}".format(term))
+            raise Exception("\n".join(msg))
 
         term = math.sqrt(term)
 
@@ -249,7 +268,18 @@ class WayPoint:
 
         if tp < 0:
             if tm < 0:
-                raise Exception("No valid future solution found")
+                msg = ["No valid future solution found"]
+                msg.append("tgt0 {}".format(self.target0))
+                msg.append("gld0 {}".format(self.glider0))
+                msg.append("d0 {}".format(d0))
+                msg.append("drifter.v {}".format(self.drifter.v))
+                msg.append("water.v {}".format(self.water.v))
+                msg.append("dv {}".format(dv))
+                msg.append("glider speed {} ^2 {}".format( self.glider.speed, spd2))
+                msg.append("a {} b {} c {}".format(a, b, c))
+                msg.append("term {}".format(term))
+                msg.append("tp={} tm={}".format(tp, tm))
+                raise Exception("\n".join(msg))
             return tm
         elif tm < 0:
             return tp
