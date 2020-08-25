@@ -24,6 +24,7 @@ ExecStart=/home/pat/GSatMicroListener/Listener.py \
 	--mailTo=pat@mousebrains.com \
 	--drifterDB=../GSatMicro.db \
 	--gliderDB=glider.db \
+	--wptsDB=waypoints.db \
 	--apiListen \
 	--apiDir=/home/pat/sfmc-rest-programs/fmc1 \
 	--apiCopy=api.txt \
@@ -31,7 +32,6 @@ ExecStart=/home/pat/GSatMicroListener/Listener.py \
 	--drifterTau=60 \
 	--pattern=patterns.faux.yaml \
 	--gotoAPI=tmp \
-	--gotoRetain \
 	--gotoDT=900 \
 	--gotoArchive=archive \
 	--gotoIndex=1000 \
